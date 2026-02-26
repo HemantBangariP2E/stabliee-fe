@@ -46,6 +46,7 @@ const TopNav = ({
   const fullWalletAddress = "0x4c1a9cc6Cf1da9cc6Cf1daEDE3";
 
   const handleLogout = () => {
+    localStorage.clear();
     navigate("/login");
   };
 

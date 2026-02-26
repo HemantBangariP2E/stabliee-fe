@@ -19,7 +19,7 @@ const AppSidebar = () => {
 
   const handleLogout = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    // Clear any session data and redirect to login
+    localStorage.clear();
     navigate("/login");
   };
 

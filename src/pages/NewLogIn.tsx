@@ -10,6 +10,17 @@ declare global {
   }
 }
 
+const WIDGET_SCRIPT_SRC = "http://localhost:3001/my-widget.js";
+const WIDGET_CONTAINER_ID = "kalp-wallet-container";
+const WIDGET_API_KEY = "8bfcfa2aa2d525b1ba196c6f553cda6146a73df68fd59bc3ec6ad368ab7e7237";
+const REDIRECT_URL = "/dashboard";
+
+const renderWidget = () => {
+  if (typeof window.renderMyWidget === "function") {
+    window.renderMyWidget(WIDGET_CONTAINER_ID, WIDGET_API_KEY, REDIRECT_URL);
+  }
+};
+
 const Login = () => {
   const scriptLoaded = useRef(false);
 
@@ -17,25 +28,23 @@ const Login = () => {
     if (scriptLoaded.current) return;
     scriptLoaded.current = true;
 
-    if (document.querySelector('script[src="http://localhost:3001/my-widget.js"]')) {
+    const scriptAlreadyInPage = document.querySelector(`script[src="${WIDGET_SCRIPT_SRC}"]`);
+
+    if (scriptAlreadyInPage) {
+      // Script already loaded (e.g. by App or from previous visit) – ensure widget renders into this page's container
+      if (typeof window.renderMyWidget === "function") {
+        renderWidget();
+      } else {
+        scriptAlreadyInPage.addEventListener("load", renderWidget);
+        return () => scriptAlreadyInPage.removeEventListener("load", renderWidget);
+      }
       return;
     }
 
     const script = document.createElement("script");
-    script.src = "http://localhost:3001/my-widget.js";
+    script.src = WIDGET_SCRIPT_SRC;
     script.async = true;
-    script.onload = () => {
-      if (window.renderMyWidget) {
-        console.log("Rendering Widget");
-        window.renderMyWidget(
-          "kalp-wallet-container",
-          "8bfcfa2aa2d525b1ba196c6f553cda6146a73df68fd59bc3ec6ad368ab7e7237", // API key
-          "/dashboard" // Replace with your redirect URL
-        );
-      } else {
-        console.error("SDK not loaded yet");
-      }
-    };
+    script.onload = renderWidget;
     document.body.appendChild(script);
 
     return () => {
@@ -43,9 +52,7 @@ const Login = () => {
     };
   }, []);
 
-  return (
-    <div id='kalp-wallet-container'></div>
-  );
+  return <div id={WIDGET_CONTAINER_ID} />;
 };
 
 export default Login;
