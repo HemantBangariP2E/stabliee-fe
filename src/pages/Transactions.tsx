@@ -648,8 +648,17 @@ await supabase
 
             <div className="h-px bg-border my-6" />
 
-            <Button onClick={sendTransaction} className="w-full sm:w-auto h-12 px-8 rounded-xl text-base font-semibold" disabled={!amount || (sendInputMode === "email" ? !recipientEmail : !recipientWallet)}>
-              Confirm Transfer
+            <Button
+              onClick={sendTransaction}
+              className="w-full sm:w-auto h-12 px-8 rounded-xl text-base font-semibold"
+              disabled={
+                loading ||
+                !amount ||
+                (sendInputMode === "email" ? !recipientEmail : !recipientWallet) ||
+                (usdcBalance !== null && usdcBalance <= 0)
+              }
+            >
+              {loading ? "Processing..." : "Confirm Transfer"}
             </Button>
 
             <div className="mt-6 pt-4 border-t border-border/50">
