@@ -213,18 +213,24 @@ const TransactionHistory = () => {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
-                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          USDC Transaction
-                          <ArrowUpDown className="w-3.5 h-3.5" />
-                        </div>
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Type</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Amount</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">From email</th>
+                                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">From email</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">To email</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Fees</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Amount</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">TX Hash</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Type</th>
+
+
+                        {/* <div className="flex items-center gap-1">
+                          USDC Transaction
+                          <ArrowUpDown className="w-3.5 h-3.5" /> */}
+                        {/* </div> */}
+                      {/* </th> */}
+                      
+                      {/* <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Gas</th> */}
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
+              
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Date</th>
+                      {/* <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th> */}
                     </tr>
                   </thead>
                   <tbody>
@@ -234,17 +240,6 @@ const TransactionHistory = () => {
                         onClick={() => setSelectedTransaction(tx)}
                         className="border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors cursor-pointer"
                       >
-                        <td className="py-3 px-4 text-sm">{tx.date}</td>
-                        <td className="py-3 px-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            {tx.type === "Send" && <Send className="w-4 h-4 text-primary" />}
-                            {tx.type === "Receive" && <Download className="w-4 h-4 text-success" />}
-                            {tx.type === "Buy" && <TrendingUp className="w-4 h-4 text-success" />}
-                            {tx.type === "Sell" && <TrendingDown className="w-4 h-4 text-destructive" />}
-                            <span>{tx.type}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-sm">{formatAmountForList(tx.amount)} USDC</td>
                         <td className="py-3 px-4 text-sm">
                           {tx.fromEmail !== "N/A" ? (
                             <div className="flex items-center gap-1.5">
@@ -275,9 +270,27 @@ const TransactionHistory = () => {
                             <span className="text-muted-foreground">N/A</span>
                           )}
                         </td>
+                        <td className="py-3 px-4 text-sm">{formatAmountForList(tx.amount)} USDC</td>
                         <td className="py-3 px-4 text-sm">
-                          {tx.gasFee !== "N/A" ? `${formatAmountForList(tx.gasFee)} USDC` : "N/A"}
+                              {tx.transactionId
+                            ? `${tx.transactionId.slice(0, 4)}...${tx.transactionId.slice(-4)}`
+                            : "N/A"}
                         </td>
+
+    
+                        <td className="py-3 px-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            {tx.type === "Send" && <Send className="w-4 h-4 text-primary" />}
+                            {tx.type === "Receive" && <Download className="w-4 h-4 text-success" />}
+                            {tx.type === "Buy" && <TrendingUp className="w-4 h-4 text-success" />}
+                            {tx.type === "Sell" && <TrendingDown className="w-4 h-4 text-destructive" />}
+                            <span>{tx.type}</span>
+                          </div>
+                        </td>
+                        
+                        {/* <td className="py-3 px-4 text-sm">
+                          {tx.gasFee !== "N/A" ? `${formatAmountForList(tx.gasFee)} USDC` : "N/A"}
+                        </td> */}
                         <td className="py-3 px-4 text-sm">
                           <span
                             className={cn(
@@ -289,6 +302,8 @@ const TransactionHistory = () => {
                             {tx.status}
                           </span>
                         </td>
+                        <td className="py-3 px-4 text-sm">{tx.date}</td>
+
                       </tr>
                     ))}
                   </tbody>
@@ -364,170 +379,7 @@ const TransactionHistory = () => {
           )}
 
           {/* Transaction Detail Card Modal */}
-          {selectedTransaction && (
-            <div 
-              className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-              onClick={() => setSelectedTransaction(null)}
-            >
-              <div 
-                className="bg-background w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[85vh] overflow-y-auto animate-fade-in"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Header with close button */}
-                <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Transaction Details</h3>
-                  <button 
-                    onClick={() => setSelectedTransaction(null)}
-                    className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Transaction Summary */}
-                <div className="p-6 space-y-6">
-                  {/* Top Section: Participants, Type Icon, Amount, Date */}
-                  <div className="text-center space-y-3">
-                    <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto bg-muted">
-                      {getNameIcon(
-                        selectedTransaction.fromEmail !== "N/A"
-                          ? selectedTransaction.fromEmail
-                          : selectedTransaction.toEmail
-                      )}
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium truncate max-w-[220px] mx-auto">
-                        From: {selectedTransaction.fromEmail !== "N/A" ? selectedTransaction.fromEmail : "-"}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate max-w-[220px] mx-auto">
-                        To: {selectedTransaction.toEmail !== "N/A" ? selectedTransaction.toEmail : "-"}
-                      </p>
-                    </div>
-                    <p className={cn(
-                      "text-2xl font-bold",
-                      selectedTransaction.type === "Receive" && "text-success",
-                      selectedTransaction.type === "Buy" && "text-success"
-                    )}>
-                      {selectedTransaction.type === "Receive" || selectedTransaction.type === "Buy" ? "+" : "-"}{selectedTransaction.amount}
-                    </p>
-                    <p className="text-sm text-muted-foreground">{selectedTransaction.date}</p>
-                    
-                    {/* Type and Status */}
-                    <div className="flex items-center justify-center gap-2">
-                      <div className={cn(
-                        "flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg",
-                        selectedTransaction.type === "Send" && "bg-primary/10 text-primary",
-                        selectedTransaction.type === "Receive" && "bg-success/10 text-success",
-                        selectedTransaction.type === "Buy" && "bg-success/10 text-success",
-                        selectedTransaction.type === "Sell" && "bg-destructive/10 text-destructive"
-                      )}>
-                        {getTypeIcon(selectedTransaction.type)}
-                        <span>{selectedTransaction.type}</span>
-                      </div>
-                      <span className={cn(
-                        "text-sm font-medium px-3 py-1.5 rounded-lg",
-                        selectedTransaction.status === "Success" && "bg-success/10 text-success",
-                        selectedTransaction.status === "Failed" && "bg-destructive/10 text-destructive"
-                      )}>
-                        {selectedTransaction.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Details Section */}
-                  <div className="border border-border rounded-xl divide-y divide-border">
-                    
-                    <div className="flex items-center justify-between p-4">
-                      <span className="text-sm text-muted-foreground">Transaction Hash</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium font-mono">
-                          {selectedTransaction.transactionId
-                            ? `${selectedTransaction.transactionId.slice(0, 4)}...${selectedTransaction.transactionId.slice(-4)}`
-                            : "N/A"}
-                        </span>
-                        <button
-                          onClick={() => copyToClipboard(selectedTransaction.transactionId, "Transaction ID")}
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {selectedTransaction.batchId && (
-                      <div className="flex items-center justify-between p-4">
-                        <span className="text-sm text-muted-foreground">Batch ID</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{selectedTransaction.batchId}</span>
-                          <button
-                            onClick={() => copyToClipboard(selectedTransaction.batchId!, "Batch ID")}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedTransaction.fromEmail !== "N/A" && (
-                      <div className="flex items-center justify-between p-4">
-                        <span className="text-sm text-muted-foreground">From email</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate max-w-[180px]">
-                            {selectedTransaction.fromEmail}
-                          </span>
-                          <button
-                            onClick={() => copyToClipboard(selectedTransaction.fromEmail, "From email")}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedTransaction.toEmail !== "N/A" && (
-                      <div className="flex items-center justify-between p-4">
-                        <span className="text-sm text-muted-foreground">To email</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate max-w-[180px]">
-                            {selectedTransaction.toEmail}
-                          </span>
-                          <button
-                            onClick={() => copyToClipboard(selectedTransaction.toEmail, "To email")}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between p-4">
-                      <span className="text-sm text-muted-foreground">Fees</span>
-                      <span className="text-sm font-medium">{selectedTransaction.gasFee}</span>
-                    </div>
-                    
-                    <div className="flex items-center justify-between p-4">
-                      <span className="text-sm text-muted-foreground">Date & Time</span>
-                      <span className="text-sm font-medium">{selectedTransaction.date}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer Close Button */}
-                <div className="sticky bottom-0 bg-background border-t border-border p-4">
-                  <Button 
-                    onClick={() => setSelectedTransaction(null)}
-                    className="w-full rounded-xl"
-                    variant="outline"
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
+         
 
           {/* Pagination */}
           <div className="flex flex-col sm:flex-row items-center justify-between mt-4 gap-4">
