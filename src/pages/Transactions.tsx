@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast";
 import baseLogo from "@/assets/base-logo.png";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/hooks/supabaseClient";
+import { ethers } from "ethers";
 const mockBeneficiaries = [{
   id: 1,
   name: "TTT",
@@ -45,6 +46,7 @@ const mockBeneficiaries = [{
 }];
 const Transactions = () => {
   const [searchParams] = useSearchParams();
+   const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
   const emailFromUrl = searchParams.get("email") || "";
   const [recipientEmail, setRecipientEmail] = useState(emailFromUrl);
   const [recipientWallet, setRecipientWallet] = useState("");
@@ -83,6 +85,23 @@ const Transactions = () => {
     symbol: "$",
     color: "#2775CA"
   }] as const;
+   const ownerAddress = localStorage.getItem("ownerAddress") || undefined;
+
+    const walletAddress = ownerAddress || "0x4c1a9cc6Cf1da9cc6Cf1daEDE3";
+
+    const getRpcUrl = (): string => {
+  const chainId = localStorage.getItem("chainIdConfig");
+  if (chainId === "84532") return "https://sepolia.base.org";
+  if (chainId === "11155111") return "https://rpc.sepolia.org";
+  return "https://mainnet.base.org";
+};
+
+
+const USDC_ADDRESS = "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+const ERC20_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+];
 
   // Pre-fill email from URL params
   useEffect(() => {
@@ -94,6 +113,31 @@ const Transactions = () => {
       }
     }
   }, [emailFromUrl]);
+
+  const getUSDCBalance = async (address: string): Promise<number> => {
+    const provider = new ethers.JsonRpcProvider(getRpcUrl());
+    const contract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
+    const [balance, decimals] = await Promise.all([
+      contract.balanceOf(address),
+      contract.decimals(),
+    ]);
+    return Number(ethers.formatUnits(balance, decimals));
+  };
+
+    useEffect(() => {
+      if (!ownerAddress) return;
+      let cancelled = false;
+      (async () => {
+        try {
+          const balance = await getUSDCBalance(ownerAddress);
+          console.log({ balance });
+          if (!cancelled) setUsdcBalance(balance);
+        } catch (e) {
+          console.error("Error fetching USDC balance:", e);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [ownerAddress]);
 
   // Fee calculation
   const networkFee = 0.01;
@@ -598,7 +642,7 @@ await supabase
                 </div>
               </div>
               <button type="button" onClick={() => setAmount(availableBalance.toString())} className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer mt-2">
-                Available: {availableBalance.toLocaleString()} {selectedCurrency}
+                Available: {usdcBalance !== null ? usdcBalance.toFixed(2) : "0.00"} {selectedCurrency}
               </button>
             </div>
 

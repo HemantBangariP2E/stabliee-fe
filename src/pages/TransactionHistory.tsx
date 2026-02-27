@@ -31,6 +31,9 @@ const TransactionHistory = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [goToPage, setGoToPage] = useState("");
+  const [pageSize, setPageSize] = useState(10);
+  const [filterType, setFilterType] = useState<"all" | "send" | "receive">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "success" | "failed" | "pending">("all");
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
 
@@ -128,15 +131,33 @@ const TransactionHistory = () => {
   };
 
   const filteredTransactions = transactions.filter((tx) => {
-    if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
-    return (
+
+    const matchesSearch =
+      !searchQuery ||
       tx.fromEmail.toLowerCase().includes(query) ||
       tx.toEmail.toLowerCase().includes(query) ||
       tx.transactionId.toLowerCase().includes(query) ||
-      (tx.batchId && tx.batchId.toLowerCase().includes(query))
-    );
+      (tx.batchId && tx.batchId.toLowerCase().includes(query));
+
+    const matchesType =
+      filterType === "all" ||
+      (filterType === "send" && tx.type === "Send") ||
+      (filterType === "receive" && tx.type === "Receive");
+
+    const matchesStatus =
+      filterStatus === "all" ||
+      (filterStatus === "success" && tx.status === "Success") ||
+      (filterStatus === "failed" && tx.status === "Failed") ||
+      (filterStatus === "pending" && tx.status === "Pending");
+
+    return matchesSearch && matchesType && matchesStatus;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
+  const currentPageSafe = Math.min(currentPage, totalPages);
+  const startIndex = (currentPageSafe - 1) * pageSize;
+  const paginatedTransactions = filteredTransactions.slice(startIndex, startIndex + pageSize);
 
   return (
 
@@ -170,7 +191,12 @@ const TransactionHistory = () => {
                   End Date
                 </Button>
               </div>
-              <Select>
+              <Select
+                value={filterType}
+                onValueChange={(value) =>
+                  setFilterType(value as "all" | "send" | "receive")
+                }
+              >
                 <SelectTrigger className="w-24 md:w-28 h-9 rounded-lg">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
@@ -180,7 +206,12 @@ const TransactionHistory = () => {
                   <SelectItem value="receive">Receive</SelectItem>
                 </SelectContent>
               </Select>
-              <Select>
+              <Select
+                value={filterStatus}
+                onValueChange={(value) =>
+                  setFilterStatus(value as "all" | "success" | "failed" | "pending")
+                }
+              >
                 <SelectTrigger className="w-24 md:w-28 h-9 rounded-lg">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -234,7 +265,7 @@ const TransactionHistory = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTransactions.map((tx) => (
+                    {paginatedTransactions.map((tx) => (
                       <tr
                         key={tx.id}
                         onClick={() => setSelectedTransaction(tx)}
@@ -272,9 +303,24 @@ const TransactionHistory = () => {
                         </td>
                         <td className="py-3 px-4 text-sm">{formatAmountForList(tx.amount)} USDC</td>
                         <td className="py-3 px-4 text-sm">
-                              {tx.transactionId
-                            ? `${tx.transactionId.slice(0, 4)}...${tx.transactionId.slice(-4)}`
-                            : "N/A"}
+                          {tx.transactionId ? (
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <span>
+                                {`${tx.transactionId.slice(0, 4)}...${tx.transactionId.slice(-4)}`}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyToClipboard(tx.transactionId, "Transaction ID");
+                                }}
+                                className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )}
                         </td>
 
     
@@ -312,7 +358,7 @@ const TransactionHistory = () => {
 
               {/* Mobile/Tablet Transaction List */}
               <div className="lg:hidden space-y-3">
-                {filteredTransactions.map((tx) => (
+                {paginatedTransactions.map((tx) => (
                   <div
                     key={tx.id}
                     onClick={() => setSelectedTransaction(tx)}
@@ -383,43 +429,74 @@ const TransactionHistory = () => {
 
           {/* Pagination */}
           <div className="flex flex-col sm:flex-row items-center justify-between mt-4 gap-4">
-            <Select defaultValue="10">
+            <Select
+              value={String(pageSize)}
+              onValueChange={(value) => {
+                const size = parseInt(value, 10);
+                setPageSize(size);
+                setCurrentPage(1);
+              }}
+            >
               <SelectTrigger className="w-full sm:w-28 h-9 rounded-lg">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10/Pages</SelectItem>
-                <SelectItem value="25">25/Pages</SelectItem>
-                <SelectItem value="50">50/Pages</SelectItem>
+                <SelectItem value="10">10 / page</SelectItem>
+                <SelectItem value="25">25 / page</SelectItem>
+                <SelectItem value="50">50 / page</SelectItem>
               </SelectContent>
             </Select>
 
-            <div className="flex items-center gap-2 flex-wrap justify-center">
-              <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg">
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <Button variant="default" size="sm" className="h-8 w-8 rounded-lg">
-                1
-              </Button>
-              <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg">
-                2
-              </Button>
-              <span className="text-muted-foreground hidden sm:inline">...</span>
-              <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg hidden sm:flex">
-                5
-              </Button>
-              <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg">
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-              
+            <div className="flex items-center gap-3 flex-wrap justify-center">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-lg"
+                  disabled={currentPageSafe === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Page <span className="font-medium">{currentPageSafe}</span> of{" "}
+                  <span className="font-medium">{totalPages}</span>
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-lg"
+                  disabled={currentPageSafe === totalPages}
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+
               <div className="hidden md:flex items-center gap-2 ml-4">
-                <Input 
+                <Input
                   value={goToPage}
                   onChange={(e) => setGoToPage(e.target.value)}
                   className="w-12 h-8 rounded-lg text-center"
                   placeholder="1"
                 />
-                <Button variant="ghost" size="sm" className="h-8 rounded-lg gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 rounded-lg gap-1"
+                  onClick={() => {
+                    const page = parseInt(goToPage, 10);
+                    if (!isNaN(page)) {
+                      const clamped = Math.min(
+                        Math.max(page, 1),
+                        totalPages
+                      );
+                      setCurrentPage(clamped);
+                    }
+                  }}
+                >
                   Go to
                   <ChevronRight className="w-4 h-4" />
                 </Button>
