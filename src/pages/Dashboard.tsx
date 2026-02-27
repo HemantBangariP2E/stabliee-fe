@@ -88,6 +88,7 @@ const Dashboard = () => {
     (async () => {
       try {
         const balance = await getUSDCBalance(ownerAddress);
+        console.log({ balance });
         if (!cancelled) setUsdcBalance(balance);
       } catch (e) {
         console.error("Error fetching USDC balance:", e);
@@ -130,28 +131,68 @@ const Dashboard = () => {
     }
   };
 
-    useEffect(() => {
-      console.log("User Identifier:", userIdentifier);
-    const saveUser = async () => {
-      if (!userIdentifier || !ownerAddress) return;
+  //   useEffect(() => {
+  //     console.log("User Identifier:", userIdentifier);
+  //   const saveUser = async () => {
+  //     if (!userIdentifier || !ownerAddress) return;
 
-      const { error } = await supabase
-        .from("user_logins")
-        .upsert(
-          {
-            user_identifier: userIdentifier,
-            owner_address: ownerAddress,
-          },
-          { onConflict: "user_identifier" }
-        );
+  //     const { error } = await supabase
+  //       .from("user_logins")
+  //       .upsert(
+  //         {
+  //           user_identifier: userIdentifier,
+  //           owner_address: ownerAddress,
+  //         },
+  //         { onConflict: "user_identifier" }
+  //       );
 
-      if (error) {
-        console.error("Error saving user to Supabase:", error.message);
-      }
-    };
+  //     if (error) {
+  //       console.error("Error saving user to Supabase:", error.message);
+  //     }
+  //   };
 
-    saveUser();
-  }, [userIdentifier, ownerAddress]);
+  //   saveUser();
+  // }, [userIdentifier, ownerAddress]);
+
+  useEffect(() => {
+  console.log("User Identifier:", userIdentifier);
+
+  const saveUser = async () => {
+    if (!userIdentifier || !ownerAddress) return;
+
+    // 1️⃣ Check if user already exists
+    const { data: existingUser, error: fetchError } = await supabase
+      .from("user_logins")
+      .select("user_identifier")
+      .eq("user_identifier", userIdentifier)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("Error checking user:", fetchError.message);
+      return;
+    }
+
+    // 2️⃣ If exists → do nothing
+    if (existingUser) {
+      console.log("User already exists, skipping insert");
+      return;
+    }
+
+    // 3️⃣ Insert only if not exists
+    const { error: insertError } = await supabase.from("user_logins").insert({
+      user_identifier: userIdentifier,
+      owner_address: ownerAddress,
+    });
+
+    if (insertError) {
+      console.error("Error saving user to Supabase:", insertError.message);
+    } else {
+      console.log("User inserted successfully");
+    }
+  };
+
+  saveUser();
+}, [userIdentifier, ownerAddress]);
 
   useEffect(() => {
   if (!ownerAddress) return
@@ -177,7 +218,7 @@ const Dashboard = () => {
 
   fetchTotals()
 }, [ownerAddress])
-
+console.log({usdcBalance,totalBalance})
   return <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
         {/* Stats Grid */}
@@ -193,7 +234,7 @@ const Dashboard = () => {
                   <div>
                     <span className="text-muted-foreground text-sm font-medium">Total Balance</span>
                    <p className="text-2xl font-bold text-foreground">
-  {hideNumbers ? "••••••" : `$${(usdcBalance ?? totalBalance).toFixed(2)}`}
+  {hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}
 </p>
                   </div>
                 </div>
@@ -241,7 +282,7 @@ const Dashboard = () => {
                   {hideNumbers ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-2xl font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ?? totalBalance).toFixed(2)}`}</p>
+              <p className="text-2xl font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</p>
             </Card>
           </div>
 
@@ -299,15 +340,15 @@ const Dashboard = () => {
                     <div className="flex items-center gap-3">
                       <img src={usdcLogo} alt="USDC" className="w-10 h-10" />
                       <div>
-                        <p className="font-semibold text-foreground text-base">USDC</p>
-                        <p className="text-sm text-muted-foreground">USD Coin</p>
+                        <p className="font-semibold text-foreground text-base">KC</p>
+                        <p className="text-sm text-muted-foreground">KC Coin</p>
                       </div>
                     </div>
                   </td>
                   <td className="text-right font-bold text-foreground text-base">
-                    {hideNumbers ? "••••••" : (usdcBalance ?? totalBalance).toFixed(6)}
+                    {hideNumbers ? "••••••" : (usdcBalance ? usdcBalance : 0).toFixed(6)}
                   </td>
-                  <td className="text-right font-bold text-foreground text-base">{hideNumbers ? "••••••" : `$${(usdcBalance ?? totalBalance).toFixed(2)}`}</td>
+                  <td className="text-right font-bold text-foreground text-base">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</td>
                   
                 </tr>
                 <tr className="border-b border-border/50">
@@ -328,13 +369,13 @@ const Dashboard = () => {
                 <div className="flex items-center gap-3">
                   <img src={usdcLogo} alt="USDC" className="w-9 h-9" />
                   <div>
-                    <p className="font-medium text-foreground">USDC</p>
-                    <p className="text-xs text-muted-foreground">USD Coin</p>
+                    <p className="font-medium text-foreground">KC</p>
+                    <p className="text-xs text-muted-foreground">KC Coin</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ?? totalBalance).toFixed(2)}`}</p>
-                  <p className="text-xs text-muted-foreground">{hideNumbers ? "••••••" : (usdcBalance ?? totalBalance).toFixed(6)} USDC</p>
+                  <p className="text-lg font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</p>
+                  <p className="text-xs text-muted-foreground">{hideNumbers ? "••••••" : (usdcBalance ? usdcBalance : 0).toFixed(6)} KC</p>
                 </div>
               </div>
             </div>
@@ -351,7 +392,7 @@ const Dashboard = () => {
         <Dialog open={receiveModalOpen} onOpenChange={setReceiveModalOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-center">Receive USDC</DialogTitle>
+              <DialogTitle className="text-center">Receive KC</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col items-center py-6">
               {/* Network Badge */}
@@ -392,7 +433,7 @@ const Dashboard = () => {
 
               {/* Info Note */}
               <p className="text-xs text-muted-foreground mt-4 text-center">
-                Only send USDC on Base network to this address
+                Only send KC on Base network to this address
               </p>
             </div>
           </DialogContent>

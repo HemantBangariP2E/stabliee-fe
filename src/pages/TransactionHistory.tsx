@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,25 +7,89 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, Calendar, ChevronLeft, ChevronRight, ArrowUpDown, Copy, Send, Download, TrendingUp, TrendingDown, X, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/hooks/supabaseClient";
 
-const mockTransactions = [
-  { id: 1, transactionId: "TXN-001-A7B2C", batchId: "BATCH-2025-001", date: "01-12-2025 21:22:22", type: "Send", name: "Tahir Jamaluddin", email: "tahirjamaluddin@gmail.com", amount: "0.01000000 USDC", address: "0x7e5881f281a7c47f7064f4607d61a8b2c", status: "Success", gasFee: "0.00061400 USDC" },
-  { id: 2, transactionId: "TXN-002-X9D3E", batchId: null, date: "01-12-2025 20:15:30", type: "Receive", name: "John Doe", email: "john.doe@example.com", amount: "50.00000000 USDC", address: "0x9a3b2c1d4e5f6a7b8c9d0e1f2a3b4c5d", status: "Success", gasFee: "0.00000000 USDC" },
-  { id: 3, transactionId: "TXN-003-K4L5M", batchId: null, date: "01-12-2025 19:45:12", type: "Buy", name: "Bank Transfer", email: "N/A", amount: "100.00000000 USDC", address: "0x1234567890abcdef1234567890abcdef", status: "Success", gasFee: "0.00150000 USDC" },
-  { id: 4, transactionId: "TXN-004-P8Q9R", batchId: "BATCH-2025-001", date: "01-12-2025 19:09:18", type: "Send", name: "External Wallet", email: "N/A", amount: "0.10000000 USDC", address: "0x1158b9e137166c3627afb1c73d8e4f2a", status: "Success", gasFee: "0.00030000 USDC" },
-  { id: 5, transactionId: "TXN-005-S2T3U", batchId: null, date: "01-12-2025 18:30:45", type: "Sell", name: "Bank Withdrawal", email: "N/A", amount: "25.00000000 USDC", address: "0xabcdef1234567890abcdef1234567890", status: "Success", gasFee: "0.00120000 USDC" },
-  { id: 6, transactionId: "TXN-006-V6W7X", batchId: "BATCH-2025-002", date: "01-12-2025 17:22:33", type: "Receive", name: "Alice Smith", email: "alice.smith@example.com", amount: "15.50000000 USDC", address: "0x5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c", status: "Success", gasFee: "0.00000000 USDC" },
-  { id: 7, transactionId: "TXN-007-Y1Z2A", batchId: "BATCH-2025-001", date: "01-12-2025 14:11:10", type: "Send", name: "External Wallet", email: "N/A", amount: "0.10000000 USDC", address: "0x1158b9e137166c3627afb1c73d8e4f2a", status: "Success", gasFee: "0.00101100 USDC" },
-  { id: 8, transactionId: "TXN-008-B3C4D", batchId: null, date: "01-12-2025 14:10:42", type: "Buy", name: "Card Purchase", email: "N/A", amount: "200.00000000 USDC", address: "0x7e5881f281a7c47f7064f4607d61a8b2c", status: "Success", gasFee: "0.00180000 USDC" },
-  { id: 9, transactionId: "TXN-009-E5F6G", batchId: null, date: "01-12-2025 14:08:15", type: "Sell", name: "Bank Withdrawal", email: "N/A", amount: "10.00000000 USDC", address: "0xfd5ea76dfb8ec7d8ff2ace3d4e4d9f1a", status: "Failed", gasFee: "N/A" },
-  { id: 10, transactionId: "TXN-010-H7I8J", batchId: "BATCH-2025-002", date: "01-12-2025 13:55:00", type: "Receive", name: "Bob Jones", email: "bob.jones@example.com", amount: "5.25000000 USDC", address: "0x0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b", status: "Success", gasFee: "0.00000000 USDC" },
-];
+type Transaction = {
+  id: number;
+  transactionId: string;
+  batchId: string | null;
+  date: string;
+  type: string;
+  fromEmail: string;
+  toEmail: string;
+  amount: string;
+  address: string;
+  status: string;
+  gasFee: string;
+};
+
+
 
 const TransactionHistory = () => {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [goToPage, setGoToPage] = useState("");
-  const [selectedTransaction, setSelectedTransaction] = useState<typeof mockTransactions[0] | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+
+
+  useEffect(() => {
+  const fetchTransactions = async () => {
+    const ownerAddress = localStorage.getItem("ownerAddress")
+
+    if (!ownerAddress) return
+
+    setLoading(true)
+
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .or(
+        `owner_address.eq.${ownerAddress},to_address.eq.${ownerAddress}`
+      )
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Fetch tx error:", error.message)
+      setLoading(false)
+      return
+    }
+
+    // 🔁 map DB → UI format
+    const mapped = data.map((tx: any, index: number): Transaction => ({
+      id: index + 1,
+      transactionId: tx.tx_hash,
+      batchId: tx.batch_id || null, // if you add later
+      date: new Date(tx.created_at).toLocaleString(),
+      type:
+        tx.direction === "SENT"
+          ? "Send"
+          : tx.direction === "RECEIVE"
+          ? "Receive"
+          : "Send",
+      fromEmail: tx.from_email || "N/A",
+      toEmail: tx.to_email || "N/A",
+      amount: `${Number(tx.amount).toFixed(8)} ${tx.token_symbol}`,
+      address: tx.to_address,
+      status:
+        tx.status === "SUCCESS"
+          ? "Success"
+          : tx.status === "FAILED"
+          ? "Failed"
+          : "Pending",
+      gasFee:
+        tx.gas_fee !== null
+          ? `${Number(tx.gas_fee).toFixed(8)} ${tx.token_symbol}`
+          : "N/A",
+    }))
+
+    setTransactions(mapped)
+    setLoading(false)
+  }
+
+  fetchTransactions()
+}, [])
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
@@ -63,7 +127,20 @@ const TransactionHistory = () => {
     return value.toFixed(3);
   };
 
+  const filteredTransactions = transactions.filter((tx) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      tx.fromEmail.toLowerCase().includes(query) ||
+      tx.toEmail.toLowerCase().includes(query) ||
+      tx.transactionId.toLowerCase().includes(query) ||
+      (tx.batchId && tx.batchId.toLowerCase().includes(query))
+    );
+  });
+
   return (
+
+    
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
 
@@ -117,137 +194,174 @@ const TransactionHistory = () => {
             </div>
           </div>
 
-          {/* Desktop Table */}
-          <div className="hidden lg:block border border-border rounded-xl overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      USDC Transaction
-                      <ArrowUpDown className="w-3.5 h-3.5" />
-                    </div>
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Type</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Amount</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Name</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Email</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Fees</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockTransactions.filter((tx) => {
-                  if (!searchQuery) return true;
-                  const query = searchQuery.toLowerCase();
-                  return (
-                    tx.email.toLowerCase().includes(query) ||
-                    tx.transactionId.toLowerCase().includes(query) ||
-                    (tx.batchId && tx.batchId.toLowerCase().includes(query))
-                  );
-                }).map((tx) => (
-                  <tr 
-                    key={tx.id} 
-                    onClick={() => setSelectedTransaction(tx)}
-                    className="border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors cursor-pointer"
-                  >
-                    <td className="py-3 px-4 text-sm">{tx.date}</td>
-                    <td className="py-3 px-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        {tx.type === "Send" && <Send className="w-4 h-4 text-primary" />}
-                        {tx.type === "Receive" && <Download className="w-4 h-4 text-success" />}
-                        {tx.type === "Buy" && <TrendingUp className="w-4 h-4 text-success" />}
-                        {tx.type === "Sell" && <TrendingDown className="w-4 h-4 text-destructive" />}
-                        <span>{tx.type}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-sm">{formatAmountForList(tx.amount)} USDC</td>
-                    <td className="py-3 px-4 text-sm">{tx.name}</td>
-                    <td className="py-3 px-4 text-sm">
-                      {tx.email !== "N/A" ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate max-w-[120px]">{tx.email}</span>
-                          <button
-                            onClick={() => copyToClipboard(tx.email, "Email")}
-                            className="text-muted-foreground hover:text-foreground flex-shrink-0"
-                          >
-                            <Copy className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">N/A</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-sm">{tx.gasFee !== "N/A" ? formatAmountForList(tx.gasFee) + " USDC" : "N/A"}</td>
-                    <td className="py-3 px-4 text-sm">
-                      <span className={cn(
-                        "font-medium",
-                        tx.status === "Success" && "text-success",
-                        tx.status === "Failed" && "text-destructive"
-                      )}>
-                        {tx.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {loading && (
+            <p className="text-sm text-muted-foreground p-4">
+              Loading transactions...
+            </p>
+          )}
 
-          {/* Mobile/Tablet Transaction List */}
-          <div className="lg:hidden space-y-3">
-            {mockTransactions.filter((tx) => {
-              if (!searchQuery) return true;
-              const query = searchQuery.toLowerCase();
-              return (
-                tx.email.toLowerCase().includes(query) ||
-                tx.transactionId.toLowerCase().includes(query) ||
-                (tx.batchId && tx.batchId.toLowerCase().includes(query))
-              );
-            }).map((tx) => (
-              <div 
-                key={tx.id} 
-                onClick={() => setSelectedTransaction(tx)}
-                className="border border-border rounded-xl p-4 cursor-pointer hover:bg-muted/20 active:scale-[0.99] transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center bg-muted">
-                        {getNameIcon(tx.name)}
-                      </div>
-                      <div className={cn(
-                        "absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-2 border-background",
-                        tx.type === "Send" && "bg-primary",
-                        tx.type === "Receive" && "bg-success",
-                        tx.type === "Buy" && "bg-success",
-                        tx.type === "Sell" && "bg-destructive"
-                      )}>
-                        {tx.type === "Send" && <Send className="w-2.5 h-2.5 text-primary-foreground" />}
-                        {tx.type === "Receive" && <Download className="w-2.5 h-2.5 text-success-foreground" />}
-                        {tx.type === "Buy" && <TrendingUp className="w-2.5 h-2.5 text-success-foreground" />}
-                        {tx.type === "Sell" && <TrendingDown className="w-2.5 h-2.5 text-destructive-foreground" />}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{tx.name}</p>
-                      <p className="text-xs text-muted-foreground">{tx.date}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={cn(
-                      "font-semibold",
-                      tx.type === "Receive" && "text-success",
-                      tx.type === "Send" && "text-foreground"
-                    )}>
-                      {tx.type === "Receive" ? "+" : tx.type === "Send" ? "-" : ""}{formatAmountForList(tx.amount)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">USDC</p>
-                  </div>
-                </div>
+          {!loading && filteredTransactions.length === 0 && (
+            <p className="text-sm text-muted-foreground p-4">
+              No transactions found.
+            </p>
+          )}
+
+          {!loading && filteredTransactions.length > 0 && (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden lg:block border border-border rounded-xl overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          USDC Transaction
+                          <ArrowUpDown className="w-3.5 h-3.5" />
+                        </div>
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Type</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Amount</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">From email</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">To email</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Fees</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTransactions.map((tx) => (
+                      <tr
+                        key={tx.id}
+                        onClick={() => setSelectedTransaction(tx)}
+                        className="border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors cursor-pointer"
+                      >
+                        <td className="py-3 px-4 text-sm">{tx.date}</td>
+                        <td className="py-3 px-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            {tx.type === "Send" && <Send className="w-4 h-4 text-primary" />}
+                            {tx.type === "Receive" && <Download className="w-4 h-4 text-success" />}
+                            {tx.type === "Buy" && <TrendingUp className="w-4 h-4 text-success" />}
+                            {tx.type === "Sell" && <TrendingDown className="w-4 h-4 text-destructive" />}
+                            <span>{tx.type}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-sm">{formatAmountForList(tx.amount)} USDC</td>
+                        <td className="py-3 px-4 text-sm">
+                          {tx.fromEmail !== "N/A" ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate max-w-[140px]">{tx.fromEmail}</span>
+                              <button
+                                onClick={() => copyToClipboard(tx.fromEmail, "From email")}
+                                className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-sm">
+                          {tx.toEmail !== "N/A" ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate max-w-[140px]">{tx.toEmail}</span>
+                              <button
+                                onClick={() => copyToClipboard(tx.toEmail, "To email")}
+                                className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-sm">
+                          {tx.gasFee !== "N/A" ? `${formatAmountForList(tx.gasFee)} USDC` : "N/A"}
+                        </td>
+                        <td className="py-3 px-4 text-sm">
+                          <span
+                            className={cn(
+                              "font-medium",
+                              tx.status === "Success" && "text-success",
+                              tx.status === "Failed" && "text-destructive"
+                            )}
+                          >
+                            {tx.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
+
+              {/* Mobile/Tablet Transaction List */}
+              <div className="lg:hidden space-y-3">
+                {filteredTransactions.map((tx) => (
+                  <div
+                    key={tx.id}
+                    onClick={() => setSelectedTransaction(tx)}
+                    className="border border-border rounded-xl p-4 cursor-pointer hover:bg-muted/20 active:scale-[0.99] transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-muted">
+                            {getNameIcon(
+                              tx.fromEmail !== "N/A" ? tx.fromEmail : tx.toEmail
+                            )}
+                          </div>
+                          <div
+                            className={cn(
+                              "absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-2 border-background",
+                              tx.type === "Send" && "bg-primary",
+                              tx.type === "Receive" && "bg-success",
+                              tx.type === "Buy" && "bg-success",
+                              tx.type === "Sell" && "bg-destructive"
+                            )}
+                          >
+                            {tx.type === "Send" && (
+                              <Send className="w-2.5 h-2.5 text-primary-foreground" />
+                            )}
+                            {tx.type === "Receive" && (
+                              <Download className="w-2.5 h-2.5 text-success-foreground" />
+                            )}
+                            {tx.type === "Buy" && (
+                              <TrendingUp className="w-2.5 h-2.5 text-success-foreground" />
+                            )}
+                            {tx.type === "Sell" && (
+                              <TrendingDown className="w-2.5 h-2.5 text-destructive-foreground" />
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground truncate max-w-[180px]">
+                            From: {tx.fromEmail !== "N/A" ? tx.fromEmail : "-"}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate max-w-[180px]">
+                            To: {tx.toEmail !== "N/A" ? tx.toEmail : "-"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p
+                          className={cn(
+                            "font-semibold",
+                            tx.type === "Receive" && "text-success",
+                            tx.type === "Send" && "text-foreground"
+                          )}
+                        >
+                          {tx.type === "Receive" ? "+" : tx.type === "Send" ? "-" : ""}
+                          {formatAmountForList(tx.amount)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">USDC</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           {/* Transaction Detail Card Modal */}
           {selectedTransaction && (
@@ -272,13 +386,22 @@ const TransactionHistory = () => {
 
                 {/* Transaction Summary */}
                 <div className="p-6 space-y-6">
-                  {/* Top Section: Name, Type Icon, Amount, Date */}
+                  {/* Top Section: Participants, Type Icon, Amount, Date */}
                   <div className="text-center space-y-3">
                     <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto bg-muted">
-                      {getNameIcon(selectedTransaction.name)}
+                      {getNameIcon(
+                        selectedTransaction.fromEmail !== "N/A"
+                          ? selectedTransaction.fromEmail
+                          : selectedTransaction.toEmail
+                      )}
                     </div>
-                    <div>
-                      <p className="font-semibold text-lg">{selectedTransaction.name}</p>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium truncate max-w-[220px] mx-auto">
+                        From: {selectedTransaction.fromEmail !== "N/A" ? selectedTransaction.fromEmail : "-"}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate max-w-[220px] mx-auto">
+                        To: {selectedTransaction.toEmail !== "N/A" ? selectedTransaction.toEmail : "-"}
+                      </p>
                     </div>
                     <p className={cn(
                       "text-2xl font-bold",
@@ -315,9 +438,13 @@ const TransactionHistory = () => {
                   <div className="border border-border rounded-xl divide-y divide-border">
                     
                     <div className="flex items-center justify-between p-4">
-                      <span className="text-sm text-muted-foreground">Transaction ID</span>
+                      <span className="text-sm text-muted-foreground">Transaction Hash</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{selectedTransaction.transactionId}</span>
+                        <span className="text-sm font-medium font-mono">
+                          {selectedTransaction.transactionId
+                            ? `${selectedTransaction.transactionId.slice(0, 4)}...${selectedTransaction.transactionId.slice(-4)}`
+                            : "N/A"}
+                        </span>
                         <button
                           onClick={() => copyToClipboard(selectedTransaction.transactionId, "Transaction ID")}
                           className="text-muted-foreground hover:text-foreground"
@@ -342,13 +469,32 @@ const TransactionHistory = () => {
                       </div>
                     )}
 
-                    {selectedTransaction.email !== "N/A" && (
+                    {selectedTransaction.fromEmail !== "N/A" && (
                       <div className="flex items-center justify-between p-4">
-                        <span className="text-sm text-muted-foreground">Email</span>
+                        <span className="text-sm text-muted-foreground">From email</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate max-w-[180px]">{selectedTransaction.email}</span>
+                          <span className="text-sm font-medium truncate max-w-[180px]">
+                            {selectedTransaction.fromEmail}
+                          </span>
                           <button
-                            onClick={() => copyToClipboard(selectedTransaction.email, "Email")}
+                            onClick={() => copyToClipboard(selectedTransaction.fromEmail, "From email")}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedTransaction.toEmail !== "N/A" && (
+                      <div className="flex items-center justify-between p-4">
+                        <span className="text-sm text-muted-foreground">To email</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate max-w-[180px]">
+                            {selectedTransaction.toEmail}
+                          </span>
+                          <button
+                            onClick={() => copyToClipboard(selectedTransaction.toEmail, "To email")}
                             className="text-muted-foreground hover:text-foreground"
                           >
                             <Copy className="w-4 h-4" />

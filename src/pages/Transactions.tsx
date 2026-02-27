@@ -204,16 +204,20 @@ const insertTransaction = async ({
   status,
   gasFee = 0,
   ownerAddress,
-  fromAddress 
+  fromAddress,
+    fromEmail,
+  toEmail
 }: {
   txHash: string
   to: string
   amount: number
-  direction: "SEND" | "RECEIVE"
+  direction: "SENT" | "RECEIVE"
   status: "SUCCESS" | "PENDING" | "FAILED"
   gasFee?: number,
   ownerAddress?: string,
-  fromAddress?: string
+  fromAddress?: string,
+  fromEmail?: string,
+  toEmail?: string
 }) => {
   // const ownerAddress = localStorage.getItem("ownerAddress")
 
@@ -229,6 +233,8 @@ const insertTransaction = async ({
     direction,
     status,
     gas_fee: gasFee,
+    from_email: localStorage.getItem("userIdentifier") || "",
+    to_email: recipientEmail
   })
 
   if (error) {
@@ -248,13 +254,13 @@ const insertTransaction = async ({
       return
     }
 
-    if (!recipientEmail || !amount) {
+    if (!recipientWallet || !amount) {
       setError('Please enter recipient address and amount')
       return
     }
 
-    if (!/^0x[a-fA-F0-9]{40}$/.test(recipientEmail)) {
-      console.log("Invalid Ethereum address:", recipientEmail);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(recipientWallet)) {
+      console.log("Invalid Ethereum address:", recipientWallet);
       setError('Invalid Ethereum address')
       return
     }
@@ -286,7 +292,7 @@ const insertTransaction = async ({
             "outputs": [{ "type": "bool" }]
           }
         ],'transfer',[
-          recipientEmail
+          recipientWallet
         ]);
 
         console.log("Transaction hash:", hash);
@@ -294,9 +300,9 @@ const insertTransaction = async ({
 
 await insertTransaction({
   txHash: pendingHash,
-  to: recipientEmail,
+  to: recipientWallet,
   amount: Number(amount),
-  direction: "SEND",
+  direction: "SENT",
   status: "PENDING",
   gasFee: networkFee,
   
@@ -326,7 +332,7 @@ await supabase
         //@ts-ignore
         const hash = await window.exectueMPCTokenTxn(
           localStorage.getItem('ownerAddress'),
-          recipientEmail,
+          recipientWallet,
           parseInt(amount),
           parseInt(localStorage.getItem('chainIdConfig')),
           localStorage.getItem('networkName'),
@@ -341,14 +347,18 @@ await supabase
 const pendingHash = "PENDING_" + Date.now();
 await insertTransaction({
   txHash: hash.txHash,
-  to: recipientEmail,
+  to: recipientWallet,
   amount: Number(amount),
-  direction: "SEND",
+  direction: "SENT",
   status: "SUCCESS",
   gasFee: networkFee,
   ownerAddress: localStorage.getItem("ownerAddress") || "",
-  fromAddress: localStorage.getItem("ownerAddress") || ""
+  fromAddress: localStorage.getItem("ownerAddress") || "",
+  fromEmail: recipientEmail,
+  toEmail: recipientEmail
 });
+
+
 
 // await insertTransaction({
 //   txHash: hash.txHash,
@@ -357,8 +367,10 @@ await insertTransaction({
 //   direction: "RECEIVE",
 //   status: "SUCCESS",
 //   gasFee: networkFee,
-//   ownerAddress: recipientEmail,
-//   fromAddress: recipientEmail
+//   ownerAddress: recipientWallet,
+//   fromAddress: recipientWallet,
+//     fromEmail: recipientEmail,
+//   toEmail: recipientEmail
 // });
 
 await supabase
@@ -379,6 +391,34 @@ await supabase
       }
     }
   }
+
+  useEffect(() => {
+  const fetchOwnerAddress = async () => {
+    if (!recipientEmail) return;
+
+    const { data, error } = await supabase
+      .from("user_logins")
+      .select("owner_address")
+      .eq("user_identifier", recipientEmail)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching owner address:", error.message);
+      return;
+    }
+
+    if (data) {
+      console.log("Owner address for email:", data.owner_address);
+
+      // optional: auto-fill wallet field
+      setRecipientWallet(data.owner_address);
+    } else {
+      console.log("No owner address found for this email");
+    }
+  };
+
+  fetchOwnerAddress();
+}, [recipientEmail]);
 
   // const sendTransaction = async (e?: any) => {
   //   if (e && typeof e.preventDefault === "function") {

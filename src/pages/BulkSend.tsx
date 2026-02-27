@@ -15,6 +15,8 @@ interface BulkTransferRow {
   currency?: string;
   fee?: number;
   errors?: string[];
+  to_email?: string; // for DB logging when recipient is email
+  walletAddress?: string; // for blockchain use when recipient is email
 }
 const isValidEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -72,64 +74,213 @@ const BulkSend = () => {
   const [showBulkConfirmDialog, setShowBulkConfirmDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const networkFee = 0.01;
-  const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+const fetchEmailWalletMap = async (emails: string[]) => {
+  if (!emails.length) return {};
+
+  const { data, error } = await supabase
+    .from("user_logins")
+    .select("user_identifier, owner_address")
+    .in("user_identifier", emails);
+
+  if (error) {
+    console.error("Email check error", error);
+    return {};
+  }
+
+  const map: Record<string, string> = {};
+
+  data.forEach((u) => {
+    map[u.user_identifier.toLowerCase()] = u.owner_address;
+  });
+
+  return map;
+};
+  // const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = event.target.files?.[0];
+  //   if (!file) return;
+  
+  //   const reader = new FileReader();
+  //   reader.onload = e => {
+  //     const text = e.target?.result as string;
+  //     const lines = text.trim().split("\n");
+  //     const headers = lines[0].toLowerCase().split(",").map(h => h.trim());
+  //     const recipientCol = headers.findIndex(h => h.includes("email") || h.includes("wallet") || h.includes("owneraddress") || h === "owneraddress");
+  //     const amountCol = headers.findIndex(h => h.includes("amount"));
+  //     const currencyCol = headers.findIndex(h => h.includes("currency"));
+
+  //     if (recipientCol === -1 || amountCol === -1) {
+  //       toast({
+  //         title: "Invalid CSV Format",
+  //         description: "CSV must have email/wallet and amount columns",
+  //         variant: "destructive"
+  //       });
+  //       return;
+  //     }
+
+  //     const data: BulkTransferRow[] = [];
+  //     for (let i = 1; i < lines.length; i++) {
+  //       const values = lines[i].split(",").map(v => v.trim());
+  //       if (values.length < 2) continue;
+
+  //       const recipient = values[recipientCol] ?? "";
+  //       const amount = parseFloat(values[amountCol]);
+  //       const currency = currencyCol !== -1 ? (values[currencyCol] || "USD").toUpperCase() : "USD";
+  //       const errors: string[] = [];
+
+  //       if (!recipient) {
+  //         errors.push("Recipient is empty");
+  //       } else if (recipient.startsWith("0x")) {
+  //         if (!isValidWallet(recipient)) errors.push("Invalid wallet address format");
+  //       } else if (!isValidEmail(recipient)) {
+  //         errors.push("Invalid email format");
+  //       }
+
+  //       if (isNaN(amount) || amount <= 0) {
+  //         errors.push("Invalid amount");
+  //       }
+
+  //       if (!["USD", "USDC", "EURC"].includes(currency)) {
+  //         errors.push("Invalid currency (use USD, USDC or EURC)");
+  //       }
+
+  //       data.push({
+  //         recipient,
+  //         amount: isNaN(amount) ? 0 : amount,
+  //         currency,
+  //         // fee: networkFee,
+  //         errors,
+         
+  //       });
+  //     }
+
+  //     if (data.length === 0) {
+  //       toast({
+  //         title: "No Data Found",
+  //         description: "The CSV file appears to be empty",
+  //         variant: "destructive"
+  //       });
+  //       return;
+  //     }
+
+  //     console.log("Parsed bulk CSV rows:", data);
+  
+  //     setBulkTransferData(data);
+  //     setShowBulkPreview(true);
+  //   };
+  
+  //   reader.readAsText(file);
+  //   if (fileInputRef.current) {
+  //     fileInputRef.current.value = "";
+  //   }
+  // };
+  
+  const handleCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
   
     const reader = new FileReader();
-    reader.onload = e => {
+  
+    reader.onload = async e => {
       const text = e.target?.result as string;
       const lines = text.trim().split("\n");
       const headers = lines[0].toLowerCase().split(",").map(h => h.trim());
-      const recipientCol = headers.findIndex(h => h.includes("email") || h.includes("wallet") || h.includes("owneraddress") || h === "owneraddress");
+  
+      const recipientCol = headers.findIndex(h =>
+        h.includes("email") ||
+        h.includes("wallet") ||
+        h.includes("owneraddress") ||
+        h === "owneraddress"
+      );
+  
       const amountCol = headers.findIndex(h => h.includes("amount"));
       const currencyCol = headers.findIndex(h => h.includes("currency"));
-
+  
       if (recipientCol === -1 || amountCol === -1) {
         toast({
           title: "Invalid CSV Format",
-          description: "CSV must have ownerAddress/email/wallet and amount columns",
+          description: "CSV must have email/wallet and amount columns",
           variant: "destructive"
         });
         return;
       }
-
-      const data: BulkTransferRow[] = [];
+  
+      const rawData: BulkTransferRow[] = [];
+      const emailsToCheck: string[] = [];
+  
+      // 🔹 First pass: parse CSV
       for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(",").map(v => v.trim());
         if (values.length < 2) continue;
-
+  
         const recipient = values[recipientCol] ?? "";
         const amount = parseFloat(values[amountCol]);
-        const currency = currencyCol !== -1 ? (values[currencyCol] || "USD").toUpperCase() : "USD";
+        const currency = currencyCol !== -1
+          ? (values[currencyCol] || "USD").toUpperCase()
+          : "USD";
+  
         const errors: string[] = [];
-
+  
         if (!recipient) {
           errors.push("Recipient is empty");
         } else if (recipient.startsWith("0x")) {
-          if (!isValidWallet(recipient)) errors.push("Invalid wallet address format");
-        } else if (!isValidEmail(recipient)) {
-          errors.push("Invalid email format");
+          if (!isValidWallet(recipient)) {
+            errors.push("Invalid wallet address format");
+          }
+        } else {
+          // email case → store for DB check
+          if (!isValidEmail(recipient)) {
+            errors.push("Invalid email format");
+          } else {
+            emailsToCheck.push(recipient.toLowerCase());
+          }
         }
-
+  
         if (isNaN(amount) || amount <= 0) {
           errors.push("Invalid amount");
         }
-
+  
         if (!["USD", "USDC", "EURC"].includes(currency)) {
           errors.push("Invalid currency (use USD, USDC or EURC)");
         }
-
-        data.push({
+  
+        rawData.push({
           recipient,
           amount: isNaN(amount) ? 0 : amount,
           currency,
-          fee: networkFee,
-          errors,
-         
+          errors
         });
       }
+  
+      // 🔹 Second pass: check emails in DB
+      const emailWalletMap = await fetchEmailWalletMap(emailsToCheck);
+  
+   const data = rawData.map((row) => {
+  if (
+    row.recipient &&
+    !row.recipient.startsWith("0x") &&
+    isValidEmail(row.recipient)
+  ) {
+    const wallet = emailWalletMap[row.recipient.toLowerCase()];
 
+    if (!wallet) {
+      row.errors.push("Email not found in system");
+    } else {
+      console.log(
+        `Email ${row.recipient} → owner_address ${wallet}`
+      );
+
+      // 🔹 add wallet for blockchain use
+      row.walletAddress = wallet;
+
+      // 🔹 keep original email for DB logging
+      // row.to_email = row.recipient;
+    }
+  }
+
+  return row;
+});
+      console.log("data", data);
+  
       if (data.length === 0) {
         toast({
           title: "No Data Found",
@@ -138,7 +289,7 @@ const BulkSend = () => {
         });
         return;
       }
-
+  
       console.log("Parsed bulk CSV rows:", data);
   
       setBulkTransferData(data);
@@ -146,10 +297,14 @@ const BulkSend = () => {
     };
   
     reader.readAsText(file);
+
+  
+  
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
+
   const getBulkTotalAmount = () => {
     return bulkTransferData.reduce((sum, row) => sum + row.amount, 0);
   };
@@ -160,9 +315,11 @@ const BulkSend = () => {
     return bulkTransferData.filter(row => row.errors.length > 0).length;
   };
   const hasErrors = () => {
+    // return true
     return bulkTransferData.some(row => row?.errors?.length > 0);
   };
 const handleBulkConfirm = async () => {
+  console.group('dlksjd')
   try {
     const ownerAddress = localStorage.getItem("ownerAddress")
 
@@ -181,7 +338,7 @@ const handleBulkConfirm = async () => {
     }
 
     const formattedRecipients = bulkTransferData.map((r) => ({
-      to: r.recipient,
+      to: r.walletAddress,
       amount: r.amount,
     }))
 
@@ -201,19 +358,21 @@ const handleBulkConfirm = async () => {
       tx_hash: txHash, // same hash for bulk
       owner_address: ownerAddress,
       from_address: ownerAddress,
-      to_address: r.recipient,
+      to_address: r.walletAddress,
       amount: r.amount,
       token_symbol: "USDC",
       direction: "SENT", // bulk send = debit
       status: "SUCCESS",
       gas_fee: networkFee,
+      from_email: localStorage.getItem("userIdentifier") || "",
+      to_email: r.recipient,
     }))
 
     // 💾 Insert all rows in Supabase
     await insertTransactionsBulk(dbRows)
 
     toast({
-      title: "Bulk Transfer Initiated",
+      title: "Bulk Transfer Completed",
       description: `Stored ${dbRows.length} transactions`,
     })
 
@@ -307,7 +466,7 @@ const handleBulkConfirm = async () => {
                           </th>
                           <th className="text-right p-3 font-medium text-muted-foreground">Amount</th>
                           <th className="text-right p-3 font-medium text-muted-foreground">Currency</th>
-                          <th className="text-right p-3 font-medium text-muted-foreground">Fee</th>
+                          {/* <th className="text-right p-3 font-medium text-muted-foreground">Fee</th> */}
                           <th className="text-center p-3 font-medium text-muted-foreground w-10">Status</th>
                         </tr>
                       </thead>
@@ -322,7 +481,7 @@ const handleBulkConfirm = async () => {
                             <td className={`p-3 text-right ${!["USDC", "EURC"].includes(row.currency.toUpperCase()) ? "text-destructive" : "text-foreground"}`}>
                               {row.currency}
                             </td>
-                            <td className="p-3 text-right text-muted-foreground">{row.fee.toFixed(2)}</td>
+                            {/* <td className="p-3 text-right text-muted-foreground">{row.fee.toFixed(2)}</td> */}
                             <td className="p-3 text-center">
                               {row.errors.length > 0 ? <Tooltip>
                                   <TooltipTrigger>
@@ -349,7 +508,8 @@ const handleBulkConfirm = async () => {
                   </div>
                 </div>
 
-                <Button onClick={handleBulkConfirm} className="w-full sm:w-auto h-12 px-12 rounded-xl text-base font-semibold">
+                <Button onClick={handleBulkConfirm}               disabled={hasErrors()}
+ className="w-full sm:w-auto h-12 px-12 rounded-xl text-base font-semibold">
                   Confirm Bulk Transfer
                 </Button>
               </div>}
@@ -421,7 +581,10 @@ const handleBulkConfirm = async () => {
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4">
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleBulkFinalConfirm} className="rounded-xl">
+            <AlertDialogAction
+              onClick={handleBulkFinalConfirm}
+              className="rounded-xl"
+            >
               Confirm & Send All
             </AlertDialogAction>
           </AlertDialogFooter>
