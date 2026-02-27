@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { User, Link2, Info, Copy, Globe, Building2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { supabase } from "@/hooks/supabaseClient";
 interface WalletMapping {
   email: string;
   wallet: string;
@@ -16,13 +17,52 @@ interface WalletMapping {
   discoveryEnabled: boolean;
 }
 const Profile = () => {
+  const userIdentifier = typeof window !== "undefined" ? localStorage.getItem("userIdentifier") || "" : "";
+  const ownerAddress = typeof window !== "undefined" ? localStorage.getItem("ownerAddress") || "" : "";
+
   const [emailMappingEnabled, setEmailMappingEnabled] = useState(true);
   const [language, setLanguage] = useState("en");
   const [country, setCountry] = useState("fr");
   const [displayName, setDisplayName] = useState("");
+  const lastSavedName = useRef("");
   const [showDisableConfirm, setShowDisableConfirm] = useState(false);
   const [pendingDisableIndex, setPendingDisableIndex] = useState<number | null>(null);
   const [pendingGlobalDisable, setPendingGlobalDisable] = useState(false);
+
+  // Load name from user_logins
+  useEffect(() => {
+    if (!userIdentifier && !ownerAddress) return;
+    const fetchName = async () => {
+      let q = supabase.from("user_logins").select("name");
+      if (userIdentifier) q = q.eq("user_identifier", userIdentifier);
+      else q = q.eq("owner_address", ownerAddress);
+      const { data, error } = await q.maybeSingle();
+      if (!error && data?.name) {
+        setDisplayName(data.name);
+        lastSavedName.current = data.name;
+      }
+    };
+    fetchName();
+  }, [userIdentifier, ownerAddress]);
+
+  const saveName = async () => {
+    const trimmed = displayName.trim();
+    if (trimmed === lastSavedName.current) return;
+    if (!userIdentifier && !ownerAddress) {
+      toast({ title: "Not signed in", variant: "destructive" });
+      return;
+    }
+    let q = supabase.from("user_logins").update({ name: trimmed });
+    if (userIdentifier) q = q.eq("user_identifier", userIdentifier);
+    else q = q.eq("owner_address", ownerAddress);
+    const { error } = await q;
+    if (error) {
+      toast({ title: "Failed to update name", description: error.message, variant: "destructive" });
+      return;
+    }
+    lastSavedName.current = trimmed;
+    toast({ title: "Profile updated", description: "Your name has been saved." });
+  };
 
   // Mock wallet mappings (limited to 3) with discovery toggle
   const [walletMappings, setWalletMappings] = useState<WalletMapping[]>([{
@@ -84,9 +124,8 @@ const Profile = () => {
     setShowDisableConfirm(false);
   };
 
-  // Default user details (non-editable)
-  const userEmail = "user@stabilee.com";
-  const userWalletAddress = "0x4c1a9cc6Cf1da9cc6Cf1daEDE3";
+  const userEmail = userIdentifier || "user@stabilee.com";
+  const userWalletAddress = ownerAddress || "—";
   const copyEmail = () => {
     navigator.clipboard.writeText(userEmail);
     toast({
@@ -120,7 +159,13 @@ const Profile = () => {
             <div className="space-y-4 max-w-md">
               <div className="space-y-2">
                 <Label>Display Name</Label>
-                <Input placeholder="Enter your name" value={displayName} onChange={e => setDisplayName(e.target.value)} className="h-11 rounded-xl" />
+                <Input
+                  placeholder="Enter your name"
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  onBlur={saveName}
+                  className="h-11 rounded-xl"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Email Address</Label>
