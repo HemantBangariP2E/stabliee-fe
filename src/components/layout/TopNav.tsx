@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { DollarSign, ArrowUpRight, History, Settings, LogOut, ChevronDown, User, Copy, QrCode, ChevronsRight, Wallet, Mail } from "lucide-react";
 import Logo from "@/components/Logo";
@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import QRCodeComponent from "react-qr-code";
 import baseLogo from "@/assets/base-logo.png";
+import { supabase } from "@/hooks/supabaseClient";
 
 import {
   DropdownMenu,
@@ -36,14 +37,59 @@ interface TopNavProps {
 }
 
 const TopNav = ({ 
-  walletAddress = "0x4c1a...EDE3", 
+  walletAddress: walletAddressProp, 
   balance = "3.300577",
-  email = "user@stabilee.com"
+  email: emailProp
 }: TopNavProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [qrModalOpen, setQrModalOpen] = useState(false);
-  const fullWalletAddress = "0x4c1a9cc6Cf1da9cc6Cf1daEDE3";
+  const [email, setEmail] = useState(emailProp ?? "");
+  const [walletAddress, setWalletAddress] = useState(walletAddressProp ?? "");
+  const [fullWalletAddress, setFullWalletAddress] = useState("");
+
+  const userIdentifier = typeof window !== "undefined" ? localStorage.getItem("userIdentifier") || "" : "";
+  const ownerAddress = typeof window !== "undefined" ? localStorage.getItem("ownerAddress") || "" : "";
+
+  useEffect(() => {
+    if (!userIdentifier && !ownerAddress) {
+      if (emailProp) setEmail(emailProp);
+      if (walletAddressProp) {
+        setWalletAddress(walletAddressProp);
+        setFullWalletAddress(walletAddressProp);
+      }
+      return;
+    }
+    const fetchUser = async () => {
+      let q = supabase.from("user_logins").select("user_identifier, owner_address");
+      if (userIdentifier) q = q.eq("user_identifier", userIdentifier);
+      else q = q.eq("owner_address", ownerAddress);
+      const { data, error } = await q.maybeSingle();
+      if (error || !data) {
+        if (emailProp) setEmail(emailProp);
+        if (walletAddressProp) {
+          setWalletAddress(walletAddressProp);
+          setFullWalletAddress(walletAddressProp);
+        } else if (ownerAddress) {
+          setFullWalletAddress(ownerAddress);
+          setWalletAddress(ownerAddress.slice(0, 6) + "..." + ownerAddress.slice(-4));
+        }
+        return;
+      }
+      if (data.user_identifier) setEmail(data.user_identifier);
+      if (data.owner_address) {
+        setFullWalletAddress(data.owner_address);
+        setWalletAddress(
+          data.owner_address.slice(0, 6) + "..." + data.owner_address.slice(-4)
+        );
+      }
+    };
+    fetchUser();
+  }, [userIdentifier, ownerAddress, emailProp, walletAddressProp]);
+
+  const displayWallet = fullWalletAddress || ownerAddress;
+  const shortWallet = walletAddress || (ownerAddress ? `${ownerAddress.slice(0, 6)}...${ownerAddress.slice(-4)}` : "");
+  const displayEmail = email || userIdentifier || emailProp || "";
 
   const handleLogout = () => {
     localStorage.clear();
@@ -52,7 +98,7 @@ const TopNav = ({
 
   const copyEmail = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(email);
+    navigator.clipboard.writeText(displayEmail);
     toast({
       title: "Copied!",
       description: "Email address copied to clipboard",
@@ -61,7 +107,7 @@ const TopNav = ({
 
   const copyWalletAddress = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(walletAddress);
+    navigator.clipboard.writeText(displayWallet);
     toast({
       title: "Copied!",
       description: "Wallet address copied to clipboard",
@@ -133,7 +179,7 @@ const TopNav = ({
                 {/* QR Code */}
                 <div className="p-4 bg-white rounded-2xl mb-6 shadow-sm">
                   <QRCodeComponent 
-                    value={fullWalletAddress} 
+                    value={displayWallet} 
                     size={180}
                     level="M"
                     fgColor="#000000"
@@ -147,12 +193,12 @@ const TopNav = ({
                   <div className="bg-muted/50 border border-border rounded-lg px-3 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Wallet className="w-3 h-3 text-muted-foreground" />
-                      <span className="font-mono text-xs text-foreground truncate max-w-[70px]">{walletAddress}</span>
+                      <span className="font-mono text-xs text-foreground truncate max-w-[70px]">{shortWallet}</span>
                     </div>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigator.clipboard.writeText(fullWalletAddress);
+                        navigator.clipboard.writeText(displayWallet);
                         toast({ title: "Copied!", description: "Address copied to clipboard" });
                       }}
                       className="text-primary hover:text-primary/80 p-1 hover:bg-primary/10 rounded transition-colors flex-shrink-0"
@@ -165,12 +211,12 @@ const TopNav = ({
                   <div className="bg-muted/50 border border-border rounded-lg px-3 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Mail className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-xs text-foreground truncate max-w-[70px]">{email.slice(0, 8)}...</span>
+                      <span className="text-xs text-foreground truncate max-w-[70px]">{displayEmail ? (displayEmail.length > 8 ? `${displayEmail.slice(0, 8)}...` : displayEmail) : "—"}</span>
                     </div>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigator.clipboard.writeText(email);
+                        navigator.clipboard.writeText(displayEmail);
                         toast({ title: "Copied!", description: "Email copied to clipboard" });
                       }}
                       className="text-primary hover:text-primary/80 p-1 hover:bg-primary/10 rounded transition-colors flex-shrink-0"
@@ -194,7 +240,7 @@ const TopNav = ({
               <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-muted/50 transition-all">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
                   <span className="text-xs font-bold text-primary-foreground">
-                    {email.charAt(0).toUpperCase()}
+                    {(displayEmail && displayEmail.charAt(0).toUpperCase()) || "?"}
                   </span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-muted-foreground" />
@@ -206,15 +252,15 @@ const TopNav = ({
                   onClick={copyEmail}
                   className="flex items-center justify-between w-full group"
                 >
-                  <p className="text-sm font-medium text-foreground">{email}</p>
-                  <Copy className="w-3 h-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <p className="text-sm font-medium text-foreground truncate">{displayEmail || "—"}</p>
+                  <Copy className="w-3 h-3 text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" />
                 </button>
                 <button 
                   onClick={copyWalletAddress}
                   className="flex items-center justify-between w-full mt-1 group"
                 >
-                  <p className="text-xs text-muted-foreground font-mono">{walletAddress}</p>
-                  <Copy className="w-3 h-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <p className="text-xs text-muted-foreground font-mono truncate">{shortWallet || "—"}</p>
+                  <Copy className="w-3 h-3 text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" />
                 </button>
               </div>
               <DropdownMenuItem asChild>
