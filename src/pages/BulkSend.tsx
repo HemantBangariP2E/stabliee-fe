@@ -343,12 +343,17 @@ const handleBulkConfirm = async () => {
     }))
 
     // 🔗 Blockchain bulk call
+    const recipientWallet= "0xce938A9C74374b5B4863A9026c92D5Aa92b02332"
+    const fee=1
     //@ts-ignore
     const hash = await window.exectueMPCBulkTokenTxn(
       ownerAddress,
       formattedRecipients,
       parseInt(localStorage.getItem("chainIdConfig")),
-      "0x28bD35b56bfCa732C7DF2F2d08312169189605A8"
+      "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
+      recipientWallet,
+      fee
+      
     )
 
     const txHash = hash.txHash

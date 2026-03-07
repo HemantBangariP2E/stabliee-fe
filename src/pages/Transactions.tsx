@@ -140,8 +140,10 @@ const ERC20_ABI = [
     }, [ownerAddress]);
 
   // Fee calculation
-  const networkFee = 0.01;
-  const serviceFee = 0.0;
+  const feePercent = 0.01; // 1%
+
+  const networkFee = 1;
+  const serviceFee = 0;
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -216,7 +218,7 @@ const ERC20_ABI = [
     return beneficiary?.address || "0x...new_wallet";
   };
   const getTotalAmount = () => {
-    const amountNum = parseFloat(amount) || 0;
+    const amountNum = parseFloat(amount || "0") || 0;
     return (amountNum + networkFee + serviceFee).toFixed(2);
   };
   const handleFinalConfirm = () => {
@@ -373,18 +375,20 @@ await supabase
       }
     } else {
       try {
-        //@ts-ignore
-        const hash = await window.exectueMPCTokenTxn(
-          localStorage.getItem('ownerAddress'),
-          recipientWallet,
-          parseInt(amount),
-          parseInt(localStorage.getItem('chainIdConfig')),
-          localStorage.getItem('networkName'),
-          localStorage.getItem('blockchainName'),
-         '0x28bD35b56bfCa732C7DF2F2d08312169189605A8',
-          localStorage.getItem('userShard'),
-          localStorage.getItem('userIdentifier')
-        );
+        const fee = 1;
+        const recipientWallet= "0xce938A9C74374b5B4863A9026c92D5Aa92b02332"
+       const hash = await (window as any).exectueMPCTokenTxn(
+  localStorage.getItem('ownerAddress'),
+  recipientWallet,
+  parseInt(amount),
+  parseInt(localStorage.getItem('chainIdConfig')),
+  localStorage.getItem('networkName'),
+  localStorage.getItem('blockchainName'),
+  '0x28bD35b56bfCa732C7DF2F2d08312169189605A8',
+  localStorage.getItem('userShard'),
+  localStorage.getItem('userIdentifier'),
+  fee
+);
         console.log("Transaction hash:", hash);
         setTxHash(hash.txHash);
   setTxHash(hash.txHash);
@@ -644,6 +648,35 @@ await supabase
               <button type="button" onClick={() => setAmount(availableBalance.toString())} className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer mt-2">
                 Available: {usdcBalance !== null ? usdcBalance.toFixed(2) : "0.00"} {selectedCurrency}
               </button>
+
+              {/* Live fee & total summary */}
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground border border-border/60 rounded-xl px-3 py-2 bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <span>Amount</span>
+                  <span className="text-foreground font-medium">
+                    {parseFloat(amount || "0").toFixed(2)} {selectedCurrency}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Network Fee </span>
+                  <span className="text-foreground font-medium">
+                    {networkFee.toFixed(2)} {selectedCurrency}
+                  </span>
+                </div>
+                {/* <div className="flex items-center justify-between">
+                  <span>Service Fee</span>
+                  <span className="text-foreground font-medium">
+                    {serviceFee.toFixed(2)} {selectedCurrency}
+                  </span>
+                </div> */}
+                <div className="h-px bg-border/60 my-1" />
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-foreground">Total</span>
+                  <span className="text-foreground font-bold">
+                    {getTotalAmount()} {selectedCurrency}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="h-px bg-border my-6" />
@@ -749,11 +782,11 @@ await supabase
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Network Fee (Base)</span>
-                    <span className="text-sm text-foreground">
-                      {networkFee.toFixed(2)} {selectedCurrency}
-                    </span>
-                  </div>
+  <span className="text-sm text-muted-foreground">Network Fee</span>
+  <span className="text-sm text-foreground">
+    {networkFee.toFixed(2)} {selectedCurrency}
+  </span>
+</div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Service Fee</span>
                     <span className="text-sm text-foreground">
