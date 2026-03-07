@@ -31,12 +31,12 @@ const App = () =>
       if (scriptLoaded.current) return;
       scriptLoaded.current = true;
   
-      if (document.querySelector('script[src="http://localhost:3000/my-widget.js"]')) {
+      if (document.querySelector('script[src="https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js"]')) {
         return;
       }
   
       const script = document.createElement("script");
-      script.src = "http://localhost:3000/my-widget.js";
+      script.src = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
       script.async = true;
       script.onload = () => {
         if (window.renderMyWidget) {
