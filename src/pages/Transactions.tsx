@@ -366,7 +366,9 @@ await supabase
   .eq("tx_hash", pendingHash);
         // setRecipient()
         // setAmount('')
-        setUrl('https://sepolia.etherscan.io/tx/' + (hash.txHash ? hash.txHash : hash.blockHash));
+        const txHashForUrl = hash.txHash ? hash.txHash : hash.blockHash;
+        const chain = (localStorage.getItem('blockchainName') || 'BASE').toUpperCase();
+        setUrl(chain === 'ETH' ? `https://sepolia.etherscan.io/tx/${txHashForUrl}` : `https://sepolia.basescan.org/tx/${txHashForUrl}`);
       } catch (err) {
         console.log("Transaction error:", err);
         setError(err.message)
@@ -376,19 +378,26 @@ await supabase
     } else {
       try {
         const fee = 1;
-        const recipientWallet= "0xce938A9C74374b5B4863A9026c92D5Aa92b02332"
-       const hash = await (window as any).exectueMPCTokenTxn(
-  localStorage.getItem('ownerAddress'),
-  recipientWallet,
-  parseInt(amount),
-  parseInt(localStorage.getItem('chainIdConfig')),
-  localStorage.getItem('networkName'),
-  localStorage.getItem('blockchainName'),
-  '0x28bD35b56bfCa732C7DF2F2d08312169189605A8',
-  localStorage.getItem('userShard'),
-  localStorage.getItem('userIdentifier'),
-  fee
-);
+        const feeRecipient = "0x519aD33ACda7200Cb136cc18831133F30c207ba0";
+        const blockchainName = localStorage.getItem('blockchainName') || '';
+        const tokenContractAddress = blockchainName === 'BASE'
+          ? '0x28bD35b56bfCa732C7DF2F2d08312169189605A8'
+          : blockchainName === 'ETH'
+            ? '0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38'
+            : '0x28bD35b56bfCa732C7DF2F2d08312169189605A8';
+        const hash = await (window as any).exectueMPCTokenTxn(
+          localStorage.getItem('ownerAddress'),
+          recipientWallet,
+          parseInt(amount),
+          parseInt(localStorage.getItem('chainIdConfig')),
+          localStorage.getItem('networkName'),
+          blockchainName,
+          tokenContractAddress,
+          localStorage.getItem('userShard'),
+          localStorage.getItem('userIdentifier'),
+          fee,
+          feeRecipient
+        );
         console.log("Transaction hash:", hash);
         setTxHash(hash.txHash);
   setTxHash(hash.txHash);
@@ -428,7 +437,8 @@ await supabase
     status: "SUCCESS",
   })
   .eq("tx_hash", pendingHash);
-        setUrl(()=>localStorage.getItem('networkName') === 'sepolia' ? 'https://sepolia.etherscan.io/tx/' + hash.txHash : 'https://sepolia.basescan.org//tx/' + hash.txHash);
+        const chain = (localStorage.getItem('blockchainName') || 'BASE').toUpperCase();
+        setUrl(chain === 'ETH' ? `https://sepolia.etherscan.io/tx/${hash.txHash}` : `https://sepolia.basescan.org/tx/${hash.txHash}`);
         // setRecipient('');
         // setAmount('');
       } catch (err) {
@@ -782,11 +792,11 @@ await supabase
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-  <span className="text-sm text-muted-foreground">Network Fee</span>
-  <span className="text-sm text-foreground">
-    {networkFee.toFixed(2)} {selectedCurrency}
-  </span>
-</div>
+                    <span className="text-sm text-muted-foreground">Network Fee</span>
+                    <span className="text-sm text-foreground">
+                      {networkFee.toFixed(2)} {selectedCurrency}
+                    </span>
+                  </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Service Fee</span>
                     <span className="text-sm text-foreground">
