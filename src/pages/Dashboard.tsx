@@ -20,12 +20,16 @@ const ERC20_ABI = [
   "function decimals() view returns (uint8)",
 ];
 
+const getEthSepoliaRpcUrl = (): string =>
+  (import.meta.env.VITE_ETH_SEPOLIA_RPC as string) || "https://ethereum-sepolia-rpc.publicnode.com";
+
 const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
   const chainId = localStorage.getItem("chainIdConfig");
   const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
   if (blockchainName === "ETH" || chainId === "11155111") {
     return {
-      rpcUrl: "https://rpc.sepolia.org",
+      rpcUrl: getEthSepoliaRpcUrl(),
+      // USDT on Sepolia: https://sepolia.etherscan.io/token/0x5aec77a2cbe8ee9d359f965826bddfa026dffb38
       tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
     };
   }
@@ -89,6 +93,13 @@ const Dashboard = () => {
   const [selectedCoin, setSelectedCoin] = useState<SelectedCoin>("USDC");
   const email = "user@stabilee.com";
   const walletAddress = ownerAddress || "0x4c1a9cc6Cf1da9cc6Cf1daEDE3";
+
+  useEffect(() => {
+    if (!ownerAddress) {
+      navigate("/login", { replace: true });
+      return;
+    }
+  }, [ownerAddress, navigate]);
 
   useEffect(() => {
     if (!ownerAddress) return;

@@ -93,7 +93,7 @@ const TopNav = ({
 
   const handleLogout = () => {
     localStorage.clear();
-    navigate("/login");
+    window.location.href = "/login";
   };
 
   const copyEmail = (e: React.MouseEvent) => {

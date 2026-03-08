@@ -75,7 +75,7 @@ const Transactions = () => {
   const walletDropdownRef = useRef<HTMLDivElement>(null);
   const currencyDropdownRef = useRef<HTMLDivElement>(null);
   const balances = {
-    KC: 1250.0,
+    KC: usdcBalance ?? 0,
     EURC: 0.0
   };
   const availableBalance = balances[selectedCurrency];
@@ -89,15 +89,43 @@ const Transactions = () => {
 
     const walletAddress = ownerAddress || "0x4c1a9cc6Cf1da9cc6Cf1daEDE3";
 
-    const getRpcUrl = (): string => {
-  const chainId = localStorage.getItem("chainIdConfig");
-  if (chainId === "84532") return "https://sepolia.base.org";
-  if (chainId === "11155111") return "https://rpc.sepolia.org";
-  return "https://mainnet.base.org";
-};
+  const getEthSepoliaRpcUrl = (): string =>
+    (import.meta.env.VITE_ETH_SEPOLIA_RPC as string) || "https://ethereum-sepolia-rpc.publicnode.com";
 
+  const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
+    const chainId = localStorage.getItem("chainIdConfig");
+    const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+    if (blockchainName === "ETH" || chainId === "11155111") {
+      return {
+        rpcUrl: getEthSepoliaRpcUrl(),
+        // USDT on Sepolia: https://sepolia.etherscan.io/token/0x5aec77a2cbe8ee9d359f965826bddfa026dffb38
+        tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
+      };
+    }
+    return {
+      rpcUrl: chainId === "84532" ? "https://sepolia.base.org" : "https://mainnet.base.org",
+      tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
+    };
+  };
 
-const USDC_ADDRESS = "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+  const isEthChain = (): boolean => {
+    const chainId = localStorage.getItem("chainIdConfig");
+    const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+    return blockchainName === "ETH" || chainId === "11155111";
+  };
+  const tokenLabel = isEthChain() ? "USDT" : "USDC";
+
+  const getTokenBalance = async (address: string): Promise<number> => {
+    const { rpcUrl, tokenAddress } = getRpcUrlAndToken();
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+    const [balance, decimals] = await Promise.all([
+      contract.balanceOf(address),
+      contract.decimals(),
+    ]);
+    return Number(ethers.formatUnits(balance, decimals));
+  };
+
 const ERC20_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function decimals() view returns (uint8)",
@@ -114,26 +142,16 @@ const ERC20_ABI = [
     }
   }, [emailFromUrl]);
 
-  const getUSDCBalance = async (address: string): Promise<number> => {
-    const provider = new ethers.JsonRpcProvider(getRpcUrl());
-    const contract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
-    const [balance, decimals] = await Promise.all([
-      contract.balanceOf(address),
-      contract.decimals(),
-    ]);
-    return Number(ethers.formatUnits(balance, decimals));
-  };
-
     useEffect(() => {
       if (!ownerAddress) return;
       let cancelled = false;
       (async () => {
         try {
-          const balance = await getUSDCBalance(ownerAddress);
-          console.log({ balance });
+          const balance = await getTokenBalance(ownerAddress);
           if (!cancelled) setUsdcBalance(balance);
         } catch (e) {
-          console.error("Error fetching USDC balance:", e);
+          console.error("Error fetching token balance:", e);
+          if (!cancelled) setUsdcBalance(null);
         }
       })();
       return () => { cancelled = true; };
@@ -185,7 +203,7 @@ const ERC20_ABI = [
     if (amountNum > availableBalance) {
       toast({
         title: "Insufficient Balance",
-        description: `You cannot send more than your available balance of ${availableBalance.toLocaleString()} ${selectedCurrency}`,
+        description: `You cannot send more than your available balance of ${availableBalance.toLocaleString()} ${tokenLabel}`,
         variant: "destructive"
       });
       return;
@@ -229,7 +247,7 @@ const ERC20_ABI = [
     const recipient = sendInputMode === "email" ? getRecipientWallet() : recipientWallet;
     toast({
       title: "Transfer Initiated",
-      description: `Sending ${amount} ${selectedCurrency} to ${recipient}`
+      description: `Sending ${amount} ${tokenLabel} to ${recipient}`
     });
   };
   const handleSendInvite = () => {
@@ -289,6 +307,14 @@ const insertTransaction = async ({
 }
 
 
+
+  const getSendErrorMessage = (err: unknown): string => {
+    const msg = (err as { message?: string })?.message ?? String(err);
+    const isWalletNotCreated = /wallet|not found|not created|not registered|receiver|account does not exist|invalid recipient|does not exist|unregistered/i.test(msg);
+    return isWalletNotCreated
+      ? "This wallet address has not been created or registered. Please ask the recipient to set up their wallet first."
+      : msg;
+  };
 
   const sendTransaction = async (e) => {
     e.preventDefault()
@@ -371,7 +397,7 @@ await supabase
         setUrl(chain === 'ETH' ? `https://sepolia.etherscan.io/tx/${txHashForUrl}` : `https://sepolia.basescan.org/tx/${txHashForUrl}`);
       } catch (err) {
         console.log("Transaction error:", err);
-        setError(err.message)
+        setError(getSendErrorMessage(err))
       } finally {
         setLoading(false)
       }
@@ -443,7 +469,7 @@ await supabase
         // setAmount('');
       } catch (err) {
         console.log("Transaction error:", err);
-        setError(err.message)
+        setError(getSendErrorMessage(err))
       } finally {
         setLoading(false) 
       }
@@ -652,11 +678,11 @@ await supabase
                   <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#2775CA" }}>
                     <span className="text-white text-[10px] font-bold">$</span>
                   </div>
-                  <span className="font-medium text-sm">KC</span>
+                  <span className="font-medium text-sm">{tokenLabel}</span>
                 </div>
               </div>
               <button type="button" onClick={() => setAmount(availableBalance.toString())} className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer mt-2">
-                Available: {usdcBalance !== null ? usdcBalance.toFixed(2) : "0.00"} {selectedCurrency}
+                Available: {usdcBalance !== null ? usdcBalance.toFixed(2) : "0.00"} {tokenLabel}
               </button>
 
               {/* Live fee & total summary */}
@@ -664,13 +690,13 @@ await supabase
                 <div className="flex items-center justify-between">
                   <span>Amount</span>
                   <span className="text-foreground font-medium">
-                    {parseFloat(amount || "0").toFixed(2)} {selectedCurrency}
+                    {parseFloat(amount || "0").toFixed(2)} {tokenLabel}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Network Fee </span>
                   <span className="text-foreground font-medium">
-                    {networkFee.toFixed(2)} {selectedCurrency}
+                    {networkFee.toFixed(2)} {tokenLabel}
                   </span>
                 </div>
                 {/* <div className="flex items-center justify-between">
@@ -683,7 +709,7 @@ await supabase
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-foreground">Total</span>
                   <span className="text-foreground font-bold">
-                    {getTotalAmount()} {selectedCurrency}
+                    {getTotalAmount()} {tokenLabel}
                   </span>
                 </div>
               </div>
@@ -783,31 +809,31 @@ await supabase
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Currency</span>
-                    <span className="text-sm font-medium text-foreground">{selectedCurrency}</span>
+                    <span className="text-sm font-medium text-foreground">{tokenLabel}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Amount</span>
                     <span className="text-sm font-medium text-foreground">
-                      {parseFloat(amount || "0").toFixed(2)} {selectedCurrency}
+                      {parseFloat(amount || "0").toFixed(2)} {tokenLabel}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Network Fee</span>
                     <span className="text-sm text-foreground">
-                      {networkFee.toFixed(2)} {selectedCurrency}
+                      {networkFee.toFixed(2)} {tokenLabel}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Service Fee</span>
                     <span className="text-sm text-foreground">
-                      {serviceFee.toFixed(2)} {selectedCurrency}
+                      {serviceFee.toFixed(2)} {tokenLabel}
                     </span>
                   </div>
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold text-foreground">Total</span>
                     <span className="text-base font-bold text-foreground">
-                      {getTotalAmount()} {selectedCurrency}
+                      {getTotalAmount()} {tokenLabel}
                     </span>
                   </div>
                 </div>

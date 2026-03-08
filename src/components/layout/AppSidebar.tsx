@@ -18,9 +18,8 @@ const AppSidebar = () => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
     localStorage.clear();
-    navigate("/login");
+    window.location.href = "/login";
   };
 
   return (
