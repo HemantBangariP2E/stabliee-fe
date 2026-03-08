@@ -316,6 +316,29 @@ const insertTransaction = async ({
       : msg;
   };
 
+  const isRecipientInDb = async (walletAddress: string): Promise<boolean> => {
+    const addr = walletAddress.trim();
+    if (!addr) return false;
+    const { data, error } = await supabase
+      .from("user_logins")
+      .select("owner_address")
+      .ilike("owner_address", addr)
+      .limit(1)
+      .maybeSingle();
+    if (error) return false;
+    return data != null;
+  };
+
+  const getUserWalletByEmail = async (email: string): Promise<string | null> => {
+    const { data, error } = await supabase
+      .from("user_logins")
+      .select("owner_address")
+      .eq("user_identifier", email.trim().toLowerCase())
+      .maybeSingle();
+    if (error || !data?.owner_address) return null;
+    return data.owner_address;
+  };
+
   const sendTransaction = async (e) => {
     e.preventDefault()
     setError('')
@@ -326,14 +349,39 @@ const insertTransaction = async ({
       return
     }
 
-    if (!recipientWallet || !amount) {
-      setError('Please enter recipient address and amount')
+    if (!amount?.trim()) {
+      setError('Please enter amount')
       return
     }
 
-    if (!/^0x[a-fA-F0-9]{40}$/.test(recipientWallet)) {
-      console.log("Invalid Ethereum address:", recipientWallet);
+    let recipientAddress: string;
+    if (sendInputMode === "email") {
+      if (!recipientEmail?.trim()) {
+        setError('Please enter recipient email')
+        return
+      }
+      const wallet = await getUserWalletByEmail(recipientEmail);
+      if (!wallet) {
+        setError('User not found. This user is not registered. Please ask the recipient to sign up first.')
+        return
+      }
+      recipientAddress = wallet;
+    } else {
+      if (!recipientWallet?.trim()) {
+        setError('Please enter recipient address')
+        return
+      }
+      recipientAddress = recipientWallet.trim();
+    }
+
+    if (!/^0x[a-fA-F0-9]{40}$/i.test(recipientAddress)) {
       setError('Invalid Ethereum address')
+      return
+    }
+
+    const recipientInDb = await isRecipientInDb(recipientAddress);
+    if (!recipientInDb) {
+      setError('User not found. This wallet address is not registered. Please ask the recipient to sign up first.')
       return
     }
 
@@ -364,7 +412,7 @@ const insertTransaction = async ({
             "outputs": [{ "type": "bool" }]
           }
         ],'transfer',[
-          recipientWallet
+          recipientAddress
         ]);
 
         console.log("Transaction hash:", hash);
@@ -372,7 +420,7 @@ const insertTransaction = async ({
 
 await insertTransaction({
   txHash: pendingHash,
-  to: recipientWallet,
+  to: recipientAddress,
   amount: Number(amount),
   direction: "SENT",
   status: "PENDING",
@@ -413,7 +461,7 @@ await supabase
             : '0x28bD35b56bfCa732C7DF2F2d08312169189605A8';
         const hash = await (window as any).exectueMPCTokenTxn(
           localStorage.getItem('ownerAddress'),
-          recipientWallet,
+          recipientAddress,
           parseInt(amount),
           parseInt(localStorage.getItem('chainIdConfig')),
           localStorage.getItem('networkName'),
@@ -430,7 +478,7 @@ await supabase
 const pendingHash = "PENDING_" + Date.now();
 await insertTransaction({
   txHash: hash.txHash,
-  to: recipientWallet,
+  to: recipientAddress,
   amount: Number(amount),
   direction: "SENT",
   status: "SUCCESS",
