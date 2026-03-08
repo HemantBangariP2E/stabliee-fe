@@ -10,7 +10,7 @@ declare global {
   }
 }
 
-const WIDGET_SCRIPT_SRC = "http://localhost:3000/my-widget.js";
+const WIDGET_SCRIPT_SRC = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
 const WIDGET_CONTAINER_ID = "kalp-wallet-container";
 const WIDGET_API_KEY = "8bfcfa2aa2d525b1ba196c6f553cda6146a73df68fd59bc3ec6ad368ab7e7237";
 const REDIRECT_URL = "/dashboard";
