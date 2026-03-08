@@ -15,22 +15,30 @@ import { useEffect } from "react";
 import { supabase } from "@/hooks/supabaseClient";
 import { ethers } from "ethers";
 
-const USDC_ADDRESS = "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
 const ERC20_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function decimals() view returns (uint8)",
 ];
 
-const getRpcUrl = (): string => {
+const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
   const chainId = localStorage.getItem("chainIdConfig");
-  if (chainId === "84532") return "https://sepolia.base.org";
-  if (chainId === "11155111") return "https://rpc.sepolia.org";
-  return "https://mainnet.base.org";
+  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  if (blockchainName === "ETH" || chainId === "11155111") {
+    return {
+      rpcUrl: "https://rpc.sepolia.org",
+      tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
+    };
+  }
+  return {
+    rpcUrl: chainId === "84532" ? "https://sepolia.base.org" : "https://mainnet.base.org",
+    tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
+  };
 };
 
-const getUSDCBalance = async (address: string): Promise<number> => {
-  const provider = new ethers.JsonRpcProvider(getRpcUrl());
-  const contract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
+const getTokenBalance = async (address: string): Promise<number> => {
+  const { rpcUrl, tokenAddress } = getRpcUrlAndToken();
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
   const [balance, decimals] = await Promise.all([
     contract.balanceOf(address),
     contract.decimals(),
@@ -87,11 +95,11 @@ const Dashboard = () => {
     let cancelled = false;
     (async () => {
       try {
-        const balance = await getUSDCBalance(ownerAddress);
-        console.log({ balance });
+        const balance = await getTokenBalance(ownerAddress);
         if (!cancelled) setUsdcBalance(balance);
       } catch (e) {
-        console.error("Error fetching USDC balance:", e);
+        console.error("Error fetching token balance:", e);
+        if (!cancelled) setUsdcBalance(null);
       }
     })();
     return () => { cancelled = true; };
