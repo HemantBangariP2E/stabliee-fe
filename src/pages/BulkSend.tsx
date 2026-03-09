@@ -92,6 +92,8 @@ const BulkSend = () => {
   const [showBulkPreview, setShowBulkPreview] = useState(false);
   const [showBulkConfirmDialog, setShowBulkConfirmDialog] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkTxHash, setBulkTxHash] = useState("");
+  const [bulkTxUrl, setBulkTxUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const networkFee = 1;
   const feePercent = 0.01; // 1%
@@ -465,6 +467,14 @@ const handleBulkConfirm = async () => {
     );
 
     const txHash = hash.txHash;
+    setBulkTxHash(txHash);
+    const chain = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+    const chainId = localStorage.getItem("chainIdConfig");
+    const url =
+      chain === "ETH" || chainId === "11155111"
+        ? `https://sepolia.etherscan.io/tx/${txHash}`
+        : `https://sepolia.basescan.org/tx/${txHash}`;
+    setBulkTxUrl(url);
 
     // 🧾 Prepare DB rows (ONE PER RECIPIENT)
     const dbRows = bulkTransferData.map((r) => ({
@@ -488,9 +498,6 @@ const handleBulkConfirm = async () => {
       title: "Bulk Transfer Completed",
       description: `Stored ${dbRows.length} transactions`,
     });
-
-    setShowBulkPreview(false);
-    setBulkTransferData([]);
   } catch (err) {
     console.error("Bulk Transaction error:", err);
     const msg =
@@ -678,6 +685,25 @@ const handleBulkConfirm = async () => {
                   className="w-full sm:w-auto h-12 px-12 rounded-xl text-base font-semibold">
                   {bulkLoading ? "Processing..." : "Confirm Bulk Transfer"}
                 </Button>
+
+                {bulkTxHash && (
+                  <p className="mt-3 text-xs text-green-600 break-words">
+                    Bulk transaction sent! Hash: {bulkTxHash}
+                  </p>
+                )}
+                {bulkTxUrl && (
+                  <p className="mt-1 text-xs text-blue-600 break-words">
+                    View transaction:{" "}
+                    <a
+                      href={bulkTxUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      {bulkTxUrl}
+                    </a>
+                  </p>
+                )}
               </div>}
 
             <div className="mt-6 pt-4 border-t border-border/50">
