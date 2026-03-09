@@ -27,7 +27,7 @@ const App = () =>
 {
   const scriptLoaded = useRef(false);
 
- useEffect(() => {
+useEffect(() => {
   const scriptId = "kalp-wallet-sdk";
 
   if (document.getElementById(scriptId)) return;
