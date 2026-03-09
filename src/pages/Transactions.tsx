@@ -168,6 +168,29 @@ const ERC20_ABI = [
   const serviceFee = 0;
   const gasFeeOnePercent = gasFee * feePercent;
 
+  const COINGECKO_INTERVAL_MS = 15 * 60 * 1000; // 15 min to avoid 429
+  const [ethPriceUsd, setEthPriceUsd] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPrice = async () => {
+      try {
+        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json?.ethereum?.usd != null) setEthPriceUsd(Number(json.ethereum.usd));
+      } catch {
+        // keep last price
+      }
+    };
+    fetchPrice();
+    const t = setInterval(fetchPrice, COINGECKO_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const { rpcUrl } = getRpcUrlAndToken();
@@ -180,14 +203,12 @@ const ERC20_ABI = [
         const g = parseFloat(gweiStr);
         if (Number.isNaN(g)) return;
         const estFeeEth = (g * 1e-9) * GAS_LIMIT_ESTIMATE;
-        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
-        const json = await res.json();
-        const ethUsd = json?.ethereum?.usd != null ? Number(json.ethereum.usd) : null;
+        const ethUsd = ethPriceUsd;
         if (cancelled || ethUsd == null) return;
         const inTokens = estFeeEth * ethUsd;
-        setGasFeeInTokens(Math.round(inTokens * 1e6) / 1e6);
+        if (!cancelled) setGasFeeInTokens(Math.round(inTokens * 1e6) / 1e6);
       } catch {
-        if (!cancelled) setGasFeeInTokens(0);
+        // keep last gasFeeInTokens on error
       }
     };
     run();
@@ -196,7 +217,7 @@ const ERC20_ABI = [
       cancelled = true;
       clearInterval(t);
     };
-  }, [gasChain]);
+  }, [gasChain, ethPriceUsd]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
