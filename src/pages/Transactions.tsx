@@ -256,6 +256,22 @@ const ERC20_ABI = [
       return;
     }
     const amountNum = parseFloat(amount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Amount must be greater than 0",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (gasFeeInTokens <= 0) {
+      toast({
+        title: "Network Fee Loading",
+        description: "Please wait for network gas fees to load before confirming.",
+        variant: "destructive"
+      });
+      return;
+    }
     if (amountNum > availableBalance) {
       toast({
         title: "Insufficient Balance",
@@ -847,6 +863,8 @@ await supabase
               disabled={
                 loading ||
                 !amount ||
+                parseFloat(amount) <= 0 ||
+                gasFeeInTokens <= 0 ||
                 (sendInputMode === "email" ? !recipientEmail : !recipientWallet) ||
                 (usdcBalance !== null && usdcBalance <= 0)
               }
