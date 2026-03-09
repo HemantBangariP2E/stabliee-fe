@@ -97,7 +97,6 @@ const BulkSend = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const networkFee = 1;
   const feePercent = 0.01; // 1%
-  const GAS_LIMIT_ESTIMATE = 65_000;
   const [ethPriceUsd, setEthPriceUsd] = useState<number | null>(null);
   const [gasFeeInTokens, setGasFeeInTokens] = useState(0); // Network Gas in token (USDC/USDT) for bulk tx
   const gasFee = gasFeeInTokens;
@@ -128,34 +127,111 @@ const BulkSend = () => {
     };
   }, []);
 
-  // Derive Network Gas for bulk tx from current chain gas + price
-  useEffect(() => {
-    let cancelled = false;
-    const rpcUrl = getRpcUrlForGas();
-    const run = async () => {
-      try {
-        const provider = new ethers.JsonRpcProvider(rpcUrl);
-        const feeData = await provider.getFeeData();
-        const gweiStr = feeData.gasPrice != null ? ethers.formatUnits(feeData.gasPrice, "gwei") : null;
-        if (cancelled || gweiStr == null) return;
-        const g = parseFloat(gweiStr);
-        if (Number.isNaN(g)) return;
-        const estFeeEth = (g * 1e-9) * GAS_LIMIT_ESTIMATE;
-        const ethUsd = ethPriceUsd;
-        if (cancelled || ethUsd == null) return;
-        const inTokens = estFeeEth * ethUsd;
-        if (!cancelled) setGasFeeInTokens(Math.round(inTokens * 1e6) / 1e6);
-      } catch {
-        // keep last gasFeeInTokens on error
+  // Estimate bulk Network Gas using SDK + live gas price
+  const estimateBulkGasFee = async () => {
+    try {
+      const ownerAddress = localStorage.getItem("ownerAddress") || "";
+      const chainIdStr = localStorage.getItem("chainIdConfig") || "";
+      const tokenAddress = "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+
+      if (!ownerAddress || !chainIdStr || !ethPriceUsd || bulkTransferData.length === 0) {
+        return;
       }
-    };
-    run();
-    const t = setInterval(run, 15_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [gasChain, ethPriceUsd]);
+
+      const chainId = parseInt(chainIdStr, 10);
+      if (!Number.isFinite(chainId)) {
+        console.error("estimateBulkGasFee: invalid chainId", chainIdStr);
+        setGasFeeInTokens(0);
+        return;
+      }
+
+      const recipients = bulkTransferData.map((r) => ({
+        to: r.walletAddress || r.recipient,
+        amount: r.amount,
+      }));
+
+      const win = window as any;
+      if (typeof win.estimateMPCBulkGas !== "function") {
+        console.error("estimateBulkGasFee: window.estimateMPCBulkGas is not available");
+        // fall back to simple per-recipient estimate
+        await estimateBulkGasFeeFallback(chainId, tokenAddress, ownerAddress, bulkTransferData.length);
+        return;
+      }
+
+      const gasLimitRaw = await win.estimateMPCBulkGas(
+        ownerAddress,
+        recipients,
+        chainId,
+        tokenAddress
+      );
+
+      const gasLimit = typeof gasLimitRaw === "bigint" ? gasLimitRaw : BigInt(gasLimitRaw);
+
+      const rpcUrl = getRpcUrlForGas();
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const feeData = await provider.getFeeData();
+      if (!feeData.gasPrice) {
+        console.error("estimateBulkGasFee: feeData.gasPrice is null");
+        await estimateBulkGasFeeFallback(chainId, tokenAddress, ownerAddress, bulkTransferData.length);
+        return;
+      }
+
+      const gasCostWei = gasLimit * feeData.gasPrice;
+      const gasCostEth = Number(ethers.formatEther(gasCostWei));
+      if (!Number.isFinite(gasCostEth)) {
+        console.error("estimateBulkGasFee: gasCostEth is not finite", gasCostEth);
+        await estimateBulkGasFeeFallback(chainId, tokenAddress, ownerAddress, bulkTransferData.length);
+        return;
+      }
+
+      const gasCostUsd = gasCostEth * ethPriceUsd;
+      setGasFeeInTokens(Math.round(gasCostUsd * 1e6) / 1e6);
+    } catch (err) {
+      console.error("estimateBulkGasFee: error estimating gas", err);
+      // fallback to simple estimate if SDK-based fails
+      const ownerAddress = localStorage.getItem("ownerAddress") || "";
+      const chainIdStr = localStorage.getItem("chainIdConfig") || "";
+      const tokenAddress = "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+      const chainId = parseInt(chainIdStr || "0", 10);
+      if (ownerAddress && Number.isFinite(chainId)) {
+        await estimateBulkGasFeeFallback(chainId, tokenAddress, ownerAddress, bulkTransferData.length);
+      }
+    }
+  };
+
+  // Fallback estimator: approximate gas as 65k per recipient when SDK estimator isn't available
+  const estimateBulkGasFeeFallback = async (
+    chainId: number,
+    tokenAddress: string,
+    ownerAddress: string,
+    recipientCount: number
+  ) => {
+    try {
+      if (!ethPriceUsd || recipientCount <= 0) return;
+const baseGas = 120000;
+const perRecipientGas = 35000;
+
+const totalGasLimit = BigInt(baseGas + recipientCount * perRecipientGas);
+      const rpcUrl = getRpcUrlForGas();
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const feeData = await provider.getFeeData();
+      if (!feeData.gasPrice) return;
+      const gasCostWei = totalGasLimit * feeData.gasPrice;
+      const gasCostEth = Number(ethers.formatEther(gasCostWei));
+      if (!Number.isFinite(gasCostEth)) return;
+      const gasCostUsd = gasCostEth * ethPriceUsd;
+      setGasFeeInTokens((prev) =>
+        gasCostUsd > 0 ? Math.round(gasCostUsd * 1e6) / 1e6 : prev
+      );
+    } catch (fallbackErr) {
+      console.error("estimateBulkGasFeeFallback: error", fallbackErr);
+    }
+  };
+
+  useEffect(() => {
+    estimateBulkGasFee();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkTransferData, ethPriceUsd]);
 const fetchEmailWalletMap = async (emails: string[]) => {
   if (!emails.length) return {};
 
