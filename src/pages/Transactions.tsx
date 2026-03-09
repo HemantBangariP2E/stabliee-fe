@@ -13,6 +13,7 @@ import baseLogo from "@/assets/base-logo.png";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/hooks/supabaseClient";
 import { ethers } from "ethers";
+import { GasFeeDisplay } from "@/components/GasFeeDisplay";
 const mockBeneficiaries = [{
   id: 1,
   name: "TTT",
@@ -114,6 +115,7 @@ const Transactions = () => {
     return blockchainName === "ETH" || chainId === "11155111";
   };
   const tokenLabel = isEthChain() ? "USDT" : "USDC";
+  const gasChain = isEthChain() ? "eth" : "base";
 
   const getTokenBalance = async (address: string): Promise<number> => {
     const { rpcUrl, tokenAddress } = getRpcUrlAndToken();
@@ -157,11 +159,44 @@ const ERC20_ABI = [
       return () => { cancelled = true; };
     }, [ownerAddress]);
 
-  // Fee calculation
+  // Fee calculation: Network Gas from live chain gas (same as GasFeeDisplay), Network Gas (1%) = 1% of that
   const feePercent = 0.01; // 1%
-
   const networkFee = 1;
+  const GAS_LIMIT_ESTIMATE = 65_000;
+  const [gasFeeInTokens, setGasFeeInTokens] = useState(0); // Network Gas in token (USDC/USDT), from live gas
+  const gasFee = gasFeeInTokens;
   const serviceFee = 0;
+  const gasFeeOnePercent = gasFee * feePercent;
+
+  useEffect(() => {
+    let cancelled = false;
+    const { rpcUrl } = getRpcUrlAndToken();
+    const run = async () => {
+      try {
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const feeData = await provider.getFeeData();
+        const gweiStr = feeData.gasPrice != null ? ethers.formatUnits(feeData.gasPrice, "gwei") : null;
+        if (cancelled || gweiStr == null) return;
+        const g = parseFloat(gweiStr);
+        if (Number.isNaN(g)) return;
+        const estFeeEth = (g * 1e-9) * GAS_LIMIT_ESTIMATE;
+        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
+        const json = await res.json();
+        const ethUsd = json?.ethereum?.usd != null ? Number(json.ethereum.usd) : null;
+        if (cancelled || ethUsd == null) return;
+        const inTokens = estFeeEth * ethUsd;
+        setGasFeeInTokens(Math.round(inTokens * 1e6) / 1e6);
+      } catch {
+        if (!cancelled) setGasFeeInTokens(0);
+      }
+    };
+    run();
+    const t = setInterval(run, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [gasChain]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -237,7 +272,7 @@ const ERC20_ABI = [
   };
   const getTotalAmount = () => {
     const amountNum = parseFloat(amount || "0") || 0;
-    return (amountNum + networkFee + serviceFee).toFixed(2);
+    return (amountNum + networkFee + gasFee + gasFeeOnePercent + serviceFee).toFixed(6);
   };
   const handleFinalConfirm = () => {
     setShowConfirmDialog(false);
@@ -308,8 +343,9 @@ const insertTransaction = async ({
 
 
 
-  const getSendErrorMessage = (err: unknown): string => {
+  const getSendErrorMessage = (err: unknown, recipientVerifiedByEmail = false): string => {
     const msg = (err as { message?: string })?.message ?? String(err);
+    if (recipientVerifiedByEmail) return msg;
     const isWalletNotCreated = /wallet|not found|not created|not registered|receiver|account does not exist|invalid recipient|does not exist|unregistered/i.test(msg);
     return isWalletNotCreated
       ? "This wallet address has not been created or registered. Please ask the recipient to set up their wallet first."
@@ -355,6 +391,7 @@ const insertTransaction = async ({
     }
 
     let recipientAddress: string;
+    let recipientVerifiedByEmail = false;
     if (sendInputMode === "email") {
       if (!recipientEmail?.trim()) {
         setError('Please enter recipient email')
@@ -366,22 +403,22 @@ const insertTransaction = async ({
         return
       }
       recipientAddress = wallet;
+      recipientVerifiedByEmail = true;
     } else {
       if (!recipientWallet?.trim()) {
         setError('Please enter recipient address')
         return
       }
       recipientAddress = recipientWallet.trim();
+      const recipientInDb = await isRecipientInDb(recipientAddress);
+      if (!recipientInDb) {
+        setError('User not found. This wallet address is not registered. Please ask the recipient to sign up first.')
+        return
+      }
     }
 
     if (!/^0x[a-fA-F0-9]{40}$/i.test(recipientAddress)) {
       setError('Invalid Ethereum address')
-      return
-    }
-
-    const recipientInDb = await isRecipientInDb(recipientAddress);
-    if (!recipientInDb) {
-      setError('User not found. This wallet address is not registered. Please ask the recipient to sign up first.')
       return
     }
 
@@ -445,13 +482,13 @@ await supabase
         setUrl(chain === 'ETH' ? `https://sepolia.etherscan.io/tx/${txHashForUrl}` : `https://sepolia.basescan.org/tx/${txHashForUrl}`);
       } catch (err) {
         console.log("Transaction error:", err);
-        setError(getSendErrorMessage(err))
+        setError(getSendErrorMessage(err, recipientVerifiedByEmail))
       } finally {
         setLoading(false)
       }
     } else {
       try {
-        const fee = 1;
+        const fee = gasFee + gasFeeOnePercent + networkFee;
         const feeRecipient = "0x519aD33ACda7200Cb136cc18831133F30c207ba0";
         const blockchainName = localStorage.getItem('blockchainName') || '';
         const tokenContractAddress = blockchainName === 'BASE'
@@ -459,7 +496,16 @@ await supabase
           : blockchainName === 'ETH'
             ? '0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38'
             : '0x28bD35b56bfCa732C7DF2F2d08312169189605A8';
-        const hash = await (window as any).exectueMPCTokenTxn(
+        const win = window as any;
+        let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
+        if (typeof executeMPCTxn !== 'function') {
+          await new Promise((r) => setTimeout(r, 1500));
+          executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
+        }
+        if (typeof executeMPCTxn !== 'function') {
+          throw new Error('Embedded wallet is not ready. Refresh the page and try again, or sign in again from the login page.');
+        }
+        const hash = await executeMPCTxn(
           localStorage.getItem('ownerAddress'),
           recipientAddress,
           parseInt(amount),
@@ -517,7 +563,7 @@ await supabase
         // setAmount('');
       } catch (err) {
         console.log("Transaction error:", err);
-        setError(getSendErrorMessage(err))
+        setError(getSendErrorMessage(err, recipientVerifiedByEmail))
       } finally {
         setLoading(false) 
       }
@@ -730,29 +776,38 @@ await supabase
                 </div>
               </div>
               <button type="button" onClick={() => setAmount(availableBalance.toString())} className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer mt-2">
-                Available: {usdcBalance !== null ? usdcBalance.toFixed(2) : "0.00"} {tokenLabel}
+                Available: {usdcBalance !== null ? usdcBalance.toFixed(6) : "0.000000"} {tokenLabel}
               </button>
 
-              {/* Live fee & total summary */}
+              {/* Live fee & total summary: Amount + Network Gas + Gas (1%) + Network Fee = Total */}
               <div className="mt-3 space-y-1 text-xs text-muted-foreground border border-border/60 rounded-xl px-3 py-2 bg-muted/30">
                 <div className="flex items-center justify-between">
                   <span>Amount</span>
                   <span className="text-foreground font-medium">
-                    {parseFloat(amount || "0").toFixed(2)} {tokenLabel}
+                    {parseFloat(amount || "0").toFixed(6)} {tokenLabel}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Network Fee </span>
+                  <span>Network Gas</span>
                   <span className="text-foreground font-medium">
-                    {networkFee.toFixed(2)} {tokenLabel}
+                    {gasFee.toFixed(6)} {tokenLabel}
                   </span>
                 </div>
-                {/* <div className="flex items-center justify-between">
-                  <span>Service Fee</span>
+                <div className="flex items-center justify-between">
+                  <span>Network Gas (1%)</span>
                   <span className="text-foreground font-medium">
-                    {serviceFee.toFixed(2)} {selectedCurrency}
+                    {gasFeeOnePercent.toFixed(6)} {tokenLabel}
                   </span>
-                </div> */}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Network Fee</span>
+                  <span className="text-foreground font-medium">
+                    {networkFee.toFixed(6)} {tokenLabel}
+                  </span>
+                </div>
+                <div className="pt-2 mt-2 border-t border-border/40">
+                  <GasFeeDisplay chain={gasChain} className="text-xs" />
+                </div>
                 <div className="h-px bg-border/60 my-1" />
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-foreground">Total</span>
@@ -862,20 +917,29 @@ await supabase
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Amount</span>
                     <span className="text-sm font-medium text-foreground">
-                      {parseFloat(amount || "0").toFixed(2)} {tokenLabel}
+                      {parseFloat(amount || "0").toFixed(6)} {tokenLabel}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Network Gas</span>
+                    <span className="text-sm text-foreground">
+                      {gasFee.toFixed(6)} {tokenLabel}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Network Gas (1%)</span>
+                    <span className="text-sm text-foreground">
+                      {gasFeeOnePercent.toFixed(6)} {tokenLabel}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Network Fee</span>
                     <span className="text-sm text-foreground">
-                      {networkFee.toFixed(2)} {tokenLabel}
+                      {networkFee.toFixed(6)} {tokenLabel}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Service Fee</span>
-                    <span className="text-sm text-foreground">
-                      {serviceFee.toFixed(2)} {tokenLabel}
-                    </span>
+                  <div className="pt-1 pb-2">
+                    <GasFeeDisplay chain={gasChain} className="text-xs" />
                   </div>
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
