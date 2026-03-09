@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -8,6 +8,8 @@ import baseLogo from "@/assets/base-logo.png";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/hooks/supabaseClient";
+import { ethers } from "ethers";
+import { GasFeeDisplay } from "@/components/GasFeeDisplay";
 
 interface BulkTransferRow {
   recipient: string;
@@ -66,14 +68,92 @@ const isValidWallet = (wallet: string): boolean => {
 //   }
 // }
 
+const getGasChain = (): "base" | "eth" => {
+  if (typeof window === "undefined") return "base";
+  const chainId = localStorage.getItem("chainIdConfig");
+  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  return blockchainName === "ETH" || chainId === "11155111" ? "eth" : "base";
+};
+
+const getRpcUrlForGas = (): string => {
+  if (typeof window === "undefined") return "https://sepolia.base.org";
+  const chainId = localStorage.getItem("chainIdConfig");
+  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  if (blockchainName === "ETH" || chainId === "11155111") {
+    const fromEnv = import.meta.env.VITE_ETH_SEPOLIA_RPC as string | undefined;
+    return fromEnv || "https://ethereum-sepolia-rpc.publicnode.com";
+  }
+  return chainId === "84532" ? "https://sepolia.base.org" : "https://mainnet.base.org";
+};
+
 const BulkSend = () => {
-  
   const [bulkSendMode, setBulkSendMode] = useState<"email" | "wallet">("email");
   const [bulkTransferData, setBulkTransferData] = useState<BulkTransferRow[]>([]);
   const [showBulkPreview, setShowBulkPreview] = useState(false);
   const [showBulkConfirmDialog, setShowBulkConfirmDialog] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const networkFee = 0.01;
+  const networkFee = 1;
+  const feePercent = 0.01; // 1%
+  const GAS_LIMIT_ESTIMATE = 65_000;
+  const [ethPriceUsd, setEthPriceUsd] = useState<number | null>(null);
+  const [gasFeeInTokens, setGasFeeInTokens] = useState(0); // Network Gas in token (USDC/USDT) for bulk tx
+  const gasFee = gasFeeInTokens;
+  const gasFeeOnePercent = gasFee * feePercent;
+  const gasChain = getGasChain();
+
+  // Fetch ETH price every 15 minutes (shared for bulk gas estimate)
+  useEffect(() => {
+    let cancelled = false;
+    const COINGECKO_INTERVAL_MS = 15 * 60 * 1000;
+    const fetchPrice = async () => {
+      try {
+        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json?.ethereum?.usd != null) {
+          setEthPriceUsd(Number(json.ethereum.usd));
+        }
+      } catch {
+        // keep last price
+      }
+    };
+    fetchPrice();
+    const t = setInterval(fetchPrice, COINGECKO_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+
+  // Derive Network Gas for bulk tx from current chain gas + price
+  useEffect(() => {
+    let cancelled = false;
+    const rpcUrl = getRpcUrlForGas();
+    const run = async () => {
+      try {
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const feeData = await provider.getFeeData();
+        const gweiStr = feeData.gasPrice != null ? ethers.formatUnits(feeData.gasPrice, "gwei") : null;
+        if (cancelled || gweiStr == null) return;
+        const g = parseFloat(gweiStr);
+        if (Number.isNaN(g)) return;
+        const estFeeEth = (g * 1e-9) * GAS_LIMIT_ESTIMATE;
+        const ethUsd = ethPriceUsd;
+        if (cancelled || ethUsd == null) return;
+        const inTokens = estFeeEth * ethUsd;
+        if (!cancelled) setGasFeeInTokens(Math.round(inTokens * 1e6) / 1e6);
+      } catch {
+        // keep last gasFeeInTokens on error
+      }
+    };
+    run();
+    const t = setInterval(run, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [gasChain, ethPriceUsd]);
 const fetchEmailWalletMap = async (emails: string[]) => {
   if (!emails.length) return {};
 
@@ -309,7 +389,8 @@ const fetchEmailWalletMap = async (emails: string[]) => {
     return bulkTransferData.reduce((sum, row) => sum + row.amount, 0);
   };
   const getBulkTotalFees = () => {
-    return bulkTransferData.reduce((sum, row) => sum + row.fee, 0);
+    // Single bulk tx → same Network Gas / Fee for all, but we show one combined fee
+    return gasFee + gasFeeOnePercent + networkFee;
   };
   const getErrorCount = () => {
     return bulkTransferData.filter(row => row.errors.length > 0).length;
@@ -319,13 +400,13 @@ const fetchEmailWalletMap = async (emails: string[]) => {
     return bulkTransferData.some(row => row?.errors?.length > 0);
   };
 const handleBulkConfirm = async () => {
-  console.group('dlksjd')
+  console.group("bulk-send");
   try {
-    const ownerAddress = localStorage.getItem("ownerAddress")
+    const ownerAddress = localStorage.getItem("ownerAddress");
 
     if (!ownerAddress) {
-      toast({ title: "Wallet not connected", variant: "destructive" })
-      return
+      toast({ title: "Wallet not connected", variant: "destructive" });
+      return;
     }
 
     if (hasErrors()) {
@@ -333,30 +414,57 @@ const handleBulkConfirm = async () => {
         title: "Validation Errors",
         description: "Fix CSV errors first",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
+
+    if (getBulkTotalAmount() <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Total amount must be greater than 0",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (gasFeeInTokens <= 0) {
+      toast({
+        title: "Network Fee Loading",
+        description: "Please wait for network gas fees to load before confirming.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setBulkLoading(true);
 
     const formattedRecipients = bulkTransferData.map((r) => ({
       to: r.walletAddress,
       amount: r.amount,
-    }))
+    }));
 
     // 🔗 Blockchain bulk call
-    const recipientWallet= "0xce938A9C74374b5B4863A9026c92D5Aa92b02332"
-    const fee=1
-    //@ts-ignore
+    // const recipientWallet = "0xce938A9C74374b5B4863A9026c92D5Aa92b02332";
+    const fee = gasFee + gasFeeOnePercent + networkFee;
+
+    const recipientWallet = "0x519aD33ACda7200Cb136cc18831133F30c207ba0";
+    const blockchainName = localStorage.getItem('blockchainName') || '';
+    const tokenContractAddress = blockchainName === 'BASE'
+      ? '0x28bD35b56bfCa732C7DF2F2d08312169189605A8'
+      : blockchainName === 'ETH'
+        ? '0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38'
+        : '0x28bD35b56bfCa732C7DF2F2d08312169189605A8';
+    // @ts-ignore
     const hash = await window.exectueMPCBulkTokenTxn(
       ownerAddress,
       formattedRecipients,
       parseInt(localStorage.getItem("chainIdConfig")),
-      "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
+      tokenContractAddress,
       recipientWallet,
       fee
-      
-    )
+    );
 
-    const txHash = hash.txHash
+    const txHash = hash.txHash;
 
     // 🧾 Prepare DB rows (ONE PER RECIPIENT)
     const dbRows = bulkTransferData.map((r) => ({
@@ -368,25 +476,38 @@ const handleBulkConfirm = async () => {
       token_symbol: "USDC",
       direction: "SENT", // bulk send = debit
       status: "SUCCESS",
-      gas_fee: networkFee,
+      gas_fee: fee,
       from_email: localStorage.getItem("userIdentifier") || "",
       to_email: r.recipient,
-    }))
+    }));
 
     // 💾 Insert all rows in Supabase
-    await insertTransactionsBulk(dbRows)
+    await insertTransactionsBulk(dbRows);
 
     toast({
       title: "Bulk Transfer Completed",
       description: `Stored ${dbRows.length} transactions`,
-    })
+    });
 
-    setShowBulkPreview(false)
-    setBulkTransferData([])
+    setShowBulkPreview(false);
+    setBulkTransferData([]);
   } catch (err) {
-    console.error("Bulk Transaction error:", err)
+    console.error("Bulk Transaction error:", err);
+    const msg =
+      err instanceof Error
+        ? err.message
+        : typeof err === "string"
+        ? err
+        : JSON.stringify(err ?? {});
+    toast({
+      title: "Bulk Transfer Failed",
+      description: msg || "Unexpected error while processing bulk transfer.",
+      variant: "destructive",
+    });
+  } finally {
+    setBulkLoading(false);
   }
-}
+};
   const handleBulkFinalConfirm = () => {
     setShowBulkConfirmDialog(false);
     setShowBulkPreview(false);
@@ -513,9 +634,49 @@ const handleBulkConfirm = async () => {
                   </div>
                 </div>
 
-                <Button onClick={handleBulkConfirm}               disabled={hasErrors()}
- className="w-full sm:w-auto h-12 px-12 rounded-xl text-base font-semibold">
-                  Confirm Bulk Transfer
+                {/* Bulk fee summary: Amount + Network Gas + Network Gas (1%) + Network Fee = Grand Total */}
+                <div className="mt-4 space-y-1 text-xs text-muted-foreground border border-border/60 rounded-xl px-3 py-2 bg-muted/30 max-w-md">
+                  <div className="flex items-center justify-between">
+                    <span>Total Amount</span>
+                    <span className="text-foreground font-medium">
+                      {getBulkTotalAmount().toFixed(6)} USDC
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Network Gas</span>
+                    <span className="text-foreground font-medium">
+                      {gasFee.toFixed(6)} USDC
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Network Gas (1%)</span>
+                    <span className="text-foreground font-medium">
+                      {gasFeeOnePercent.toFixed(6)} USDC
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Network Fee</span>
+                    <span className="text-foreground font-medium">
+                      {networkFee.toFixed(6)} USDC
+                    </span>
+                  </div>
+                  <div className="pt-2 mt-2 border-t border-border/40">
+                    <GasFeeDisplay chain={gasChain} className="text-xs" />
+                  </div>
+                  <div className="h-px bg-border/60 my-1" />
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground">Grand Total</span>
+                    <span className="text-foreground font-bold">
+                      {(getBulkTotalAmount() + getBulkTotalFees()).toFixed(6)} USDC
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleBulkConfirm}
+                  disabled={bulkLoading || hasErrors() || getBulkTotalAmount() <= 0 || gasFeeInTokens <= 0}
+                  className="w-full sm:w-auto h-12 px-12 rounded-xl text-base font-semibold">
+                  {bulkLoading ? "Processing..." : "Confirm Bulk Transfer"}
                 </Button>
               </div>}
 
@@ -551,21 +712,25 @@ const handleBulkConfirm = async () => {
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Total Amount</span>
-                    <span className="text-sm font-medium text-foreground">{getBulkTotalAmount().toFixed(2)} USDC</span>
+                    <span className="text-sm font-medium text-foreground">{getBulkTotalAmount().toFixed(6)} USDC</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total Network Fees (Base)</span>
-                    <span className="text-sm text-foreground">{getBulkTotalFees().toFixed(2)} USDC</span>
+                    <span className="text-sm text-muted-foreground">Network Gas</span>
+                    <span className="text-sm text-foreground">{gasFee.toFixed(6)} USDC</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Service Fee</span>
-                    <span className="text-sm text-foreground">0.00 USDC</span>
+                    <span className="text-sm text-muted-foreground">Network Gas (1%)</span>
+                    <span className="text-sm text-foreground">{gasFeeOnePercent.toFixed(6)} USDC</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Network Fee</span>
+                    <span className="text-sm text-foreground">{networkFee.toFixed(6)} USDC</span>
                   </div>
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold text-foreground">Grand Total</span>
                     <span className="text-base font-bold text-foreground">
-                      {(getBulkTotalAmount() + getBulkTotalFees()).toFixed(2)} USDC
+                      {(getBulkTotalAmount() + getBulkTotalFees()).toFixed(6)} USDC
                     </span>
                   </div>
                 </div>
