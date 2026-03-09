@@ -27,35 +27,18 @@ const App = () =>
 {
   const scriptLoaded = useRef(false);
 
-  useEffect(() => {
-      if (scriptLoaded.current) return;
-      scriptLoaded.current = true;
-  
-      if (document.querySelector('script[src="https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js"]')) {
-        return;
-      }
-  
-      const script = document.createElement("script");
-      script.src = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
-      script.async = true;
-      script.onload = () => {
-        if (window.renderMyWidget) {
-          console.log("Rendering Widget");
-          window.renderMyWidget(
-            "kalp-wallet-container",
-            "f44815a23b3363a00aa5fa6b3c8520f405ada4e60d7279749a1fd25a21a41c77", // API key
-            "/dashboard" // Replace with your redirect URL
-          );
-        } else {
-          console.error("SDK not loaded yet");
-        }
-      };
-      document.body.appendChild(script);
-  
-      return () => {
-        script.remove();
-      };
-    }, []);
+ useEffect(() => {
+  const scriptId = "kalp-wallet-sdk";
+
+  if (document.getElementById(scriptId)) return;
+
+  const script = document.createElement("script");
+  script.id = scriptId;
+  script.src = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
+  script.async = true;
+
+  document.body.appendChild(script);
+}, []);
     
  return <QueryClientProvider client={queryClient}>
     <TooltipProvider>
