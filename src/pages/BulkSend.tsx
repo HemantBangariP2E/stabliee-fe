@@ -538,8 +538,12 @@ const handleBulkConfirm = async () => {
     // const recipientWallet = "0xce938A9C74374b5B4863A9026c92D5Aa92b02332";
     const fee = gasFee + gasFeeOnePercent + networkFee;
 
-    const recipientWallet = "0x192d2371F0A9235231C10060031484E961dcBDA5";
-    const blockchainName = localStorage.getItem('blockchainName') || '';
+    const feeChainId = localStorage.getItem("chainIdConfig") || "";
+    const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
+    const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
+    const recipientWallet = isEthChainForFee
+      ? "0x192d2371F0A9235231C10060031484E961dcBDA5"
+      : "0xD888FE2dE6048dbd677481C3E308CFe5E176fCc9";
     const tokenContractAddress = blockchainName === 'BASE'
       ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
       : blockchainName === 'ETH'
@@ -558,10 +562,10 @@ const handleBulkConfirm = async () => {
     const txHash = hash.txHash;
     setBulkTxHash(txHash);
     const chain = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-    const chainId = localStorage.getItem("chainIdConfig") || "";
-    const isMainnet = chainId === "1" || chainId === "8453";
+    const explorerChainId = localStorage.getItem("chainIdConfig") || "";
+    const isMainnet = explorerChainId === "1" || explorerChainId === "8453";
     const url =
-      chain === "ETH" || chainId === "11155111" || chainId === "1"
+      chain === "ETH" || explorerChainId === "11155111" || explorerChainId === "1"
         ? (isMainnet ? `https://etherscan.io/tx/${txHash}` : `https://sepolia.etherscan.io/tx/${txHash}`)
         : (isMainnet ? `https://basescan.org/tx/${txHash}` : `https://sepolia.basescan.org/tx/${txHash}`);
     setBulkTxUrl(url);

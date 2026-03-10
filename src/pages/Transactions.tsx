@@ -560,8 +560,12 @@ await supabase
     } else {
       try {
         const fee = gasFee + gasFeeOnePercent + networkFee;
-        const feeRecipient = "0x192d2371F0A9235231C10060031484E961dcBDA5";
-        const blockchainName = localStorage.getItem('blockchainName') || '';
+        const feeChainId = localStorage.getItem("chainIdConfig") || "";
+        const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
+        const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
+        const feeRecipient = isEthChainForFee
+          ? "0x192d2371F0A9235231C10060031484E961dcBDA5"
+          : "0xD888FE2dE6048dbd677481C3E308CFe5E176fCc9";
         const tokenContractAddress = blockchainName === 'BASE'
           ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
           : blockchainName === 'ETH'
