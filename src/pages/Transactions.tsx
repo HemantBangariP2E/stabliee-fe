@@ -529,10 +529,10 @@ await supabase
         const feeRecipient = "0x519aD33ACda7200Cb136cc18831133F30c207ba0";
         const blockchainName = localStorage.getItem('blockchainName') || '';
         const tokenContractAddress = blockchainName === 'BASE'
-          ? '0x28bD35b56bfCa732C7DF2F2d08312169189605A8'
+          ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
           : blockchainName === 'ETH'
-            ? '0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38'
-            : '0x28bD35b56bfCa732C7DF2F2d08312169189605A8';
+            ? '0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A'
+            : '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3';
         const win = window as any;
         let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
         if (typeof executeMPCTxn !== 'function') {

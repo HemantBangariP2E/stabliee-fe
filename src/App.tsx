@@ -43,7 +43,7 @@ const App = () =>
           console.log("Rendering Widget");
           window.renderMyWidget(
             "kalp-wallet-container",
-            "f44815a23b3363a00aa5fa6b3c8520f405ada4e60d7279749a1fd25a21a41c77", // API key
+            "cce4c35335c02307321678e3a8374bd2cf477a188850d253ace283690a827919", // API key
             "/dashboard" // Replace with your redirect URL
           );
         } else {
