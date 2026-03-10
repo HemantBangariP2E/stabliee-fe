@@ -22,20 +22,33 @@ const ERC20_ABI = [
 
 const getEthSepoliaRpcUrl = (): string =>
   (import.meta.env.VITE_ETH_SEPOLIA_RPC as string) || "https://ethereum-sepolia-rpc.publicnode.com";
+const getEthMainnetRpcUrl = (): string =>
+  (import.meta.env.VITE_ETH_MAINNET_RPC as string) || "https://ethereum.publicnode.com";
 
 const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
-  const chainId = localStorage.getItem("chainIdConfig");
+  const chainId = localStorage.getItem("chainIdConfig") || "";
   const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-  if (blockchainName === "ETH" || chainId === "11155111") {
+  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
+    if (chainId === "1") {
+      return {
+        rpcUrl: getEthMainnetRpcUrl(),
+        tokenAddress: "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A", // Ethereum mainnet token
+      };
+    }
     return {
       rpcUrl: getEthSepoliaRpcUrl(),
-      // USDT on Sepolia: https://sepolia.etherscan.io/token/0x5aec77a2cbe8ee9d359f965826bddfa026dffb38
-      tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
+      tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // USDT Sepolia
+    };
+  }
+  if (chainId === "84532") {
+    return {
+      rpcUrl: "https://sepolia.base.org",
+      tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
     };
   }
   return {
-    rpcUrl: chainId === "84532" ? "https://sepolia.base.org" : "https://mainnet.base.org",
-    tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
+    rpcUrl: "https://mainnet.base.org",
+    tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3", // Base mainnet token
   };
 };
 

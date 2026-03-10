@@ -76,14 +76,27 @@ const getGasChain = (): "base" | "eth" => {
 };
 
 const getRpcUrlForGas = (): string => {
-  if (typeof window === "undefined") return "https://sepolia.base.org";
-  const chainId = localStorage.getItem("chainIdConfig");
+  if (typeof window === "undefined") return "https://mainnet.base.org";
+  const chainId = localStorage.getItem("chainIdConfig") || "";
   const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-  if (blockchainName === "ETH" || chainId === "11155111") {
-    const fromEnv = import.meta.env.VITE_ETH_SEPOLIA_RPC as string | undefined;
-    return fromEnv || "https://ethereum-sepolia-rpc.publicnode.com";
+  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
+    if (chainId === "1") {
+      return (import.meta.env.VITE_ETH_MAINNET_RPC as string) || "https://ethereum.publicnode.com";
+    }
+    return (import.meta.env.VITE_ETH_SEPOLIA_RPC as string) || "https://ethereum-sepolia-rpc.publicnode.com";
   }
   return chainId === "84532" ? "https://sepolia.base.org" : "https://mainnet.base.org";
+};
+
+/** Token address for current chain (mainnet or testnet). */
+const getTokenAddressForChain = (): string => {
+  if (typeof window === "undefined") return "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3";
+  const chainId = localStorage.getItem("chainIdConfig") || "";
+  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
+    return chainId === "1" ? "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A" : "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38";
+  }
+  return chainId === "84532" ? "0x28bD35b56bfCa732C7DF2F2d08312169189605A8" : "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3";
 };
 
 const BulkSend = () => {
@@ -132,7 +145,7 @@ const BulkSend = () => {
     try {
       const ownerAddress = localStorage.getItem("ownerAddress") || "";
       const chainIdStr = localStorage.getItem("chainIdConfig") || "";
-      const tokenAddress = "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+      const tokenAddress = getTokenAddressForChain();
 
       if (!ownerAddress || !chainIdStr || !ethPriceUsd || bulkTransferData.length === 0) {
         return;
@@ -191,7 +204,7 @@ const BulkSend = () => {
       // fallback to simple estimate if SDK-based fails
       const ownerAddress = localStorage.getItem("ownerAddress") || "";
       const chainIdStr = localStorage.getItem("chainIdConfig") || "";
-      const tokenAddress = "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+      const tokenAddress = getTokenAddressForChain();
       const chainId = parseInt(chainIdStr || "0", 10);
       if (ownerAddress && Number.isFinite(chainId)) {
         await estimateBulkGasFeeFallback(chainId, tokenAddress, ownerAddress, bulkTransferData.length);
@@ -545,11 +558,12 @@ const handleBulkConfirm = async () => {
     const txHash = hash.txHash;
     setBulkTxHash(txHash);
     const chain = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-    const chainId = localStorage.getItem("chainIdConfig");
+    const chainId = localStorage.getItem("chainIdConfig") || "";
+    const isMainnet = chainId === "1" || chainId === "8453";
     const url =
-      chain === "ETH" || chainId === "11155111"
-        ? `https://sepolia.etherscan.io/tx/${txHash}`
-        : `https://sepolia.basescan.org/tx/${txHash}`;
+      chain === "ETH" || chainId === "11155111" || chainId === "1"
+        ? (isMainnet ? `https://etherscan.io/tx/${txHash}` : `https://sepolia.etherscan.io/tx/${txHash}`)
+        : (isMainnet ? `https://basescan.org/tx/${txHash}` : `https://sepolia.basescan.org/tx/${txHash}`);
     setBulkTxUrl(url);
 
     // 🧾 Prepare DB rows (ONE PER RECIPIENT)

@@ -92,27 +92,42 @@ const Transactions = () => {
 
   const getEthSepoliaRpcUrl = (): string =>
     (import.meta.env.VITE_ETH_SEPOLIA_RPC as string) || "https://ethereum-sepolia-rpc.publicnode.com";
+  const getEthMainnetRpcUrl = (): string =>
+    (import.meta.env.VITE_ETH_MAINNET_RPC as string) || "https://ethereum.publicnode.com";
 
   const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
-    const chainId = localStorage.getItem("chainIdConfig");
+    const chainId = localStorage.getItem("chainIdConfig") || "";
     const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-    if (blockchainName === "ETH" || chainId === "11155111") {
+    // Ethereum: Sepolia 11155111 → testnet, Mainnet 1 → mainnet token
+    if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
+      if (chainId === "1") {
+        return {
+          rpcUrl: getEthMainnetRpcUrl(),
+          tokenAddress: "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A", // Ethereum mainnet token
+        };
+      }
       return {
         rpcUrl: getEthSepoliaRpcUrl(),
-        // USDT on Sepolia: https://sepolia.etherscan.io/token/0x5aec77a2cbe8ee9d359f965826bddfa026dffb38
-        tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
+        tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // USDT Sepolia
+      };
+    }
+    // Base: Sepolia 84532 → testnet, Mainnet 8453 → mainnet token
+    if (chainId === "84532") {
+      return {
+        rpcUrl: "https://sepolia.base.org",
+        tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
       };
     }
     return {
-      rpcUrl: chainId === "84532" ? "https://sepolia.base.org" : "https://mainnet.base.org",
-      tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
+      rpcUrl: "https://mainnet.base.org",
+      tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3", // Base mainnet token
     };
   };
 
   const isEthChain = (): boolean => {
-    const chainId = localStorage.getItem("chainIdConfig");
+    const chainId = localStorage.getItem("chainIdConfig") || "";
     const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-    return blockchainName === "ETH" || chainId === "11155111";
+    return blockchainName === "ETH" || chainId === "11155111" || chainId === "1";
   };
   const tokenLabel = isEthChain() ? "USDT" : "USDC";
   const gasChain = isEthChain() ? "eth" : "base";
@@ -191,14 +206,29 @@ const ERC20_ABI = [
     };
   }, []);
 
+  // Cache gas price per RPC URL to avoid hitting the RPC too often
+  const GAS_CACHE_MS = 55_000; // reuse cached gas for 55s
+  const GAS_POLL_INTERVAL_MS = 60_000; // poll at most every 60s
+  const gasCacheRef = useRef<{ rpcUrl: string; gasPriceWei: bigint; at: number } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     const { rpcUrl } = getRpcUrlAndToken();
     const run = async () => {
       try {
-        const provider = new ethers.JsonRpcProvider(rpcUrl);
-        const feeData = await provider.getFeeData();
-        const gweiStr = feeData.gasPrice != null ? ethers.formatUnits(feeData.gasPrice, "gwei") : null;
+        const now = Date.now();
+        const cached = gasCacheRef.current;
+        let gasPriceWei: bigint | null = null;
+        if (cached && cached.rpcUrl === rpcUrl && now - cached.at < GAS_CACHE_MS) {
+          gasPriceWei = cached.gasPriceWei;
+        }
+        if (gasPriceWei == null) {
+          const provider = new ethers.JsonRpcProvider(rpcUrl);
+          const feeData = await provider.getFeeData();
+          gasPriceWei = feeData.gasPrice ?? feeData.maxFeePerGas ?? null;
+          if (gasPriceWei != null) gasCacheRef.current = { rpcUrl, gasPriceWei, at: Date.now() };
+        }
+        const gweiStr = gasPriceWei != null ? ethers.formatUnits(gasPriceWei, "gwei") : null;
         if (cancelled || gweiStr == null) return;
         const g = parseFloat(gweiStr);
         if (Number.isNaN(g)) return;
@@ -212,7 +242,7 @@ const ERC20_ABI = [
       }
     };
     run();
-    const t = setInterval(run, 15_000);
+    const t = setInterval(run, GAS_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -515,8 +545,12 @@ await supabase
         // setRecipient()
         // setAmount('')
         const txHashForUrl = hash.txHash ? hash.txHash : hash.blockHash;
+        const chainId = localStorage.getItem("chainIdConfig") || "";
         const chain = (localStorage.getItem('blockchainName') || 'BASE').toUpperCase();
-        setUrl(chain === 'ETH' ? `https://sepolia.etherscan.io/tx/${txHashForUrl}` : `https://sepolia.basescan.org/tx/${txHashForUrl}`);
+        const isMainnet = chainId === "1" || chainId === "8453";
+        setUrl(chain === 'ETH'
+          ? (isMainnet ? `https://etherscan.io/tx/${txHashForUrl}` : `https://sepolia.etherscan.io/tx/${txHashForUrl}`)
+          : (isMainnet ? `https://basescan.org/tx/${txHashForUrl}` : `https://sepolia.basescan.org/tx/${txHashForUrl}`));
       } catch (err) {
         console.log("Transaction error:", err);
         setError(getSendErrorMessage(err, recipientVerifiedByEmail))
@@ -594,8 +628,12 @@ await supabase
     status: "SUCCESS",
   })
   .eq("tx_hash", pendingHash);
+        const chainId = localStorage.getItem("chainIdConfig") || "";
         const chain = (localStorage.getItem('blockchainName') || 'BASE').toUpperCase();
-        setUrl(chain === 'ETH' ? `https://sepolia.etherscan.io/tx/${hash.txHash}` : `https://sepolia.basescan.org/tx/${hash.txHash}`);
+        const isMainnet = chainId === "1" || chainId === "8453";
+        setUrl(chain === 'ETH'
+          ? (isMainnet ? `https://etherscan.io/tx/${hash.txHash}` : `https://sepolia.etherscan.io/tx/${hash.txHash}`)
+          : (isMainnet ? `https://basescan.org/tx/${hash.txHash}` : `https://sepolia.basescan.org/tx/${hash.txHash}`));
         // setRecipient('');
         // setAmount('');
       } catch (err) {
