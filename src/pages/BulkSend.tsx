@@ -525,7 +525,7 @@ const handleBulkConfirm = async () => {
     // const recipientWallet = "0xce938A9C74374b5B4863A9026c92D5Aa92b02332";
     const fee = gasFee + gasFeeOnePercent + networkFee;
 
-    const recipientWallet = "0x519aD33ACda7200Cb136cc18831133F30c207ba0";
+    const recipientWallet = "0x192d2371F0A9235231C10060031484E961dcBDA5";
     const blockchainName = localStorage.getItem('blockchainName') || '';
     const tokenContractAddress = blockchainName === 'BASE'
       ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
