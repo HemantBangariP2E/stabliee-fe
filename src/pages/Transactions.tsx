@@ -609,12 +609,16 @@ await supabase
 
   useEffect(() => {
   const fetchOwnerAddress = async () => {
-    if (!recipientEmail) return;
+    const normalizedEmail = recipientEmail?.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setRecipientWallet("");
+      return;
+    }
 
     const { data, error } = await supabase
       .from("user_logins")
       .select("owner_address")
-      .eq("user_identifier", recipientEmail)
+      .eq("user_identifier", normalizedEmail)
       .maybeSingle();
 
     if (error) {
@@ -622,13 +626,12 @@ await supabase
       return;
     }
 
-    if (data) {
+    if (data?.owner_address) {
       console.log("Owner address for email:", data.owner_address);
-
-      // optional: auto-fill wallet field
       setRecipientWallet(data.owner_address);
     } else {
       console.log("No owner address found for this email");
+      setRecipientWallet("");
     }
   };
 
@@ -865,8 +868,8 @@ await supabase
                 !amount ||
                 parseFloat(amount) <= 0 ||
                 gasFeeInTokens <= 0 ||
-                (sendInputMode === "email" ? !recipientEmail : !recipientWallet) ||
-                (usdcBalance !== null && usdcBalance <= 0)
+                (sendInputMode === "email" ? !recipientEmail?.trim() : !recipientWallet?.trim()) 
+                // (usdcBalance !== null && usdcBalance <= 0)
               }
             >
               {loading ? "Processing..." : "Confirm Transfer"}
