@@ -913,7 +913,14 @@ await supabase
           <Button
   type="button"
   onClick={sendTransaction}
-  disabled={loading}
+     disabled={
+                loading ||
+               
+                !amount ||
+                parseFloat(amount) <= 0 ||
+                gasFeeInTokens <= 0 ||
+                (sendInputMode === "email" ? !recipientEmail?.trim() : !recipientWallet?.trim())
+              }
 >
   {loading ? "Processing..." : "Confirm Transfer"}
 </Button>
