@@ -1,58 +1,34 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from "react";
 
 declare global {
   interface Window {
-    renderMyWidget: (
+    renderMyWidget?: (
       containerId: string,
-      widgetApiKey: string, // your auth API key
-      redirectUrl: string // URL on which the app should be redirected after login
+      widgetApiKey: string,
+      redirectUrl: string
     ) => void;
   }
 }
 
-const WIDGET_SCRIPT_SRC = "https://embedded-wallet.kalp.studio/my-widget.js";
-const WIDGET_CONTAINER_ID = "kalp-wallet-container";
-const WIDGET_API_KEY = "d4d3f472f87499f50b6dfc537c00ca223d03f089b8afd4879c701cc5231a25a3";
-const REDIRECT_URL = "/dashboard";
-
-const renderWidget = () => {
-  if (typeof window.renderMyWidget === "function") {
-    window.renderMyWidget(WIDGET_CONTAINER_ID, WIDGET_API_KEY, REDIRECT_URL);
-  }
-};
-
 const Login = () => {
-  const scriptLoaded = useRef(false);
-
   useEffect(() => {
-    if (scriptLoaded.current) return;
-    scriptLoaded.current = true;
+    const container = document.getElementById("kalp-wallet-container");
 
-    const scriptAlreadyInPage = document.querySelector(`script[src="${WIDGET_SCRIPT_SRC}"]`);
+    if (!container) return;
 
-    if (scriptAlreadyInPage) {
-      // Script already loaded (e.g. by App or from previous visit) – ensure widget renders into this page's container
-      if (typeof window.renderMyWidget === "function") {
-        renderWidget();
-      } else {
-        scriptAlreadyInPage.addEventListener("load", renderWidget);
-        return () => scriptAlreadyInPage.removeEventListener("load", renderWidget);
-      }
-      return;
+    // prevent duplicate widget
+    if (container.childNodes.length > 0) return;
+
+    if (window.renderMyWidget) {
+      window.renderMyWidget(
+        "kalp-wallet-container",
+        "d4d3f472f87499f50b6dfc537c00ca223d03f089b8afd4879c701cc5231a25a3",
+        "/dashboard"
+      );
     }
-
-    const script = document.createElement("script");
-    script.src = WIDGET_SCRIPT_SRC;
-    script.async = true;
-    script.onload = renderWidget;
-    document.body.appendChild(script);
-
-    return () => {
-      script.remove();
-    };
   }, []);
 
-  return <div id={WIDGET_CONTAINER_ID} />;
+  return <div id="kalp-wallet-container"></div>;
 };
 
 export default Login;
