@@ -542,8 +542,8 @@ const handleBulkConfirm = async () => {
     const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
     const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
     const recipientWallet = isEthChainForFee
-      ? "0x192d2371F0A9235231C10060031484E961dcBDA5"
-      : "0xD888FE2dE6048dbd677481C3E308CFe5E176fCc9";
+      ? "0xe800228411744bA5958218dbD24881c6c373A65c"
+      : "0xFa4042a66b218Ab5E15D39dB7098aC4C57Cf89F2";
     const tokenContractAddress = blockchainName === 'BASE'
       ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
       : blockchainName === 'ETH'

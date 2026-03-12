@@ -31,19 +31,19 @@ const App = () =>
       if (scriptLoaded.current) return;
       scriptLoaded.current = true;
   
-      if (document.querySelector('script[src="https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js"]')) {
+      if (document.querySelector('script[src="https://embedded-wallet.kalp.studio/my-widget.js"]')) {
         return;
       }
   
       const script = document.createElement("script");
-      script.src = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
+      script.src = "https://embedded-wallet.kalp.studio/my-widget.js";
       script.async = true;
       script.onload = () => {
         if (window.renderMyWidget) {
           console.log("Rendering Widget");
           window.renderMyWidget(
             "kalp-wallet-container",
-            "cce4c35335c02307321678e3a8374bd2cf477a188850d253ace283690a827919", // API key
+            "d4d3f472f87499f50b6dfc537c00ca223d03f089b8afd4879c701cc5231a25a3", // API key
             "/dashboard" // Replace with your redirect URL
           );
         } else {

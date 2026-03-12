@@ -10,9 +10,9 @@ declare global {
   }
 }
 
-const WIDGET_SCRIPT_SRC = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
+const WIDGET_SCRIPT_SRC = "https://embedded-wallet.kalp.studio/my-widget.js";
 const WIDGET_CONTAINER_ID = "kalp-wallet-container";
-const WIDGET_API_KEY = "cce4c35335c02307321678e3a8374bd2cf477a188850d253ace283690a827919";
+const WIDGET_API_KEY = "d4d3f472f87499f50b6dfc537c00ca223d03f089b8afd4879c701cc5231a25a3";
 const REDIRECT_URL = "/dashboard";
 
 const renderWidget = () => {

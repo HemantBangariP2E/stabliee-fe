@@ -71,6 +71,10 @@ const Transactions = () => {
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [txStatus, setTxStatus] = useState<
+    "idle" | "sending" | "retrying" | "success" | "failed"
+  >("idle");
+  const [retryCount, setRetryCount] = useState(0);
   const [url, setUrl] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const walletDropdownRef = useRef<HTMLDivElement>(null);
@@ -419,6 +423,36 @@ const insertTransaction = async ({
       : msg;
   };
 
+  const executeWithRetry = async (fn: () => Promise<any>, retries = 2) => {
+    let attempt = 0;
+
+    while (attempt <= retries) {
+      try {
+        if (attempt === 0) {
+          setTxStatus("sending");
+        } else {
+          setTxStatus("retrying");
+          setRetryCount(attempt);
+        }
+
+        const result = await fn();
+
+        setTxStatus("success");
+        return result;
+      } catch (err) {
+        attempt++;
+
+        if (attempt > retries) {
+          setTxStatus("failed");
+          throw err;
+        }
+
+        console.log("Retrying relay attempt:", attempt);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    }
+  };
+
   const isRecipientInDb = async (walletAddress: string): Promise<boolean> => {
     const addr = walletAddress.trim();
     if (!addr) return false;
@@ -443,9 +477,11 @@ const insertTransaction = async ({
   };
 
   const sendTransaction = async (e) => {
-    e.preventDefault()
-    setError('')
-    setTxHash('')
+    e.preventDefault();
+    setError("");
+    setTxHash("");
+    setTxStatus("idle");
+    setRetryCount(0);
 
     if (!account) {
       setError('Please connect your wallet first')
@@ -489,11 +525,11 @@ const insertTransaction = async ({
       return
     }
 
-    setLoading(true)
+    setLoading(true);
     // const amountInWei = parseUnits(amount, 18).toString();
     console.log("wallet type====:", localStorage.getItem('walletType'));
 
-    if(localStorage.getItem('walletProvider')=='metamask'){
+    if (localStorage.getItem("walletProvider") == "metamask") {
       try {
         const txParams = {
           from: account,
@@ -564,8 +600,8 @@ await supabase
         const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
         const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
         const feeRecipient = isEthChainForFee
-          ? "0x192d2371F0A9235231C10060031484E961dcBDA5"
-          : "0xD888FE2dE6048dbd677481C3E308CFe5E176fCc9";
+          ? "0xe800228411744bA5958218dbD24881c6c373A65c"
+          : "0xFa4042a66b218Ab5E15D39dB7098aC4C57Cf89F2";
         const tokenContractAddress = blockchainName === 'BASE'
           ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
           : blockchainName === 'ETH'
@@ -580,22 +616,23 @@ await supabase
         if (typeof executeMPCTxn !== 'function') {
           throw new Error('Embedded wallet is not ready. Refresh the page and try again, or sign in again from the login page.');
         }
-        const hash = await executeMPCTxn(
-          localStorage.getItem('ownerAddress'),
-          recipientAddress,
-          parseInt(amount),
-          parseInt(localStorage.getItem('chainIdConfig')),
-          localStorage.getItem('networkName'),
-          blockchainName,
-          tokenContractAddress,
-          localStorage.getItem('userShard'),
-          localStorage.getItem('userIdentifier'),
-          fee,
-          feeRecipient
+        const hash = await executeWithRetry(() =>
+          executeMPCTxn(
+            localStorage.getItem("ownerAddress"),
+            recipientAddress,
+            parseInt(amount),
+            parseInt(localStorage.getItem("chainIdConfig")),
+            localStorage.getItem("networkName"),
+            blockchainName,
+            tokenContractAddress,
+            localStorage.getItem("userShard"),
+            localStorage.getItem("userIdentifier"),
+            fee,
+            feeRecipient
+          )
         );
         console.log("Transaction hash:", hash);
         setTxHash(hash.txHash);
-  setTxHash(hash.txHash);
 const pendingHash = "PENDING_" + Date.now();
 await insertTransaction({
   txHash: hash.txHash,
@@ -907,15 +944,44 @@ await supabase
               className="w-full sm:w-auto h-12 px-8 rounded-xl text-base font-semibold"
               disabled={
                 loading ||
+                txStatus === "sending" ||
+                txStatus === "retrying" ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
                 gasFeeInTokens <= 0 ||
-                (sendInputMode === "email" ? !recipientEmail?.trim() : !recipientWallet?.trim()) 
-                // (usdcBalance !== null && usdcBalance <= 0)
+                (sendInputMode === "email" ? !recipientEmail?.trim() : !recipientWallet?.trim())
               }
             >
-              {loading ? "Processing..." : "Confirm Transfer"}
+              {txStatus === "sending" && "Submitting transaction..."}
+              {txStatus === "retrying" && `Retrying transaction (${retryCount})...`}
+              {txStatus === "success" && "Transaction sent"}
+              {txStatus === "failed" && "Try again"}
+              {txStatus === "idle" && "Confirm Transfer"}
             </Button>
+
+            {txStatus === "sending" && (
+              <p className="text-sm text-blue-500 mt-2">
+                Submitting transaction to relayer. This may take up to 2 minutes.
+              </p>
+            )}
+
+            {txStatus === "retrying" && (
+              <p className="text-sm text-yellow-500 mt-2">
+                Network delay. Retrying transaction...
+              </p>
+            )}
+
+            {txStatus === "success" && (
+              <p className="text-sm text-green-500 mt-2">
+                Transaction successful.
+              </p>
+            )}
+
+            {txStatus === "failed" && (
+              <p className="text-sm text-red-500 mt-2">
+                Transaction failed. Please try again.
+              </p>
+            )}
 
             <div className="mt-6 pt-4 border-t border-border/50">
               <p className="text-xs font-bold text-foreground mb-3">Important information</p>
