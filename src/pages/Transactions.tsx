@@ -910,25 +910,13 @@ await supabase
 
             <div className="h-px bg-border my-6" />
 
-            <Button
-              onClick={sendTransaction}
-              className="w-full sm:w-auto h-12 px-8 rounded-xl text-base font-semibold"
-              disabled={
-                loading ||
-                txStatus === "sending" ||
-                txStatus === "retrying" ||
-                !amount ||
-                parseFloat(amount) <= 0 ||
-                gasFeeInTokens <= 0 ||
-                (sendInputMode === "email" ? !recipientEmail?.trim() : !recipientWallet?.trim())
-              }
-            >
-              {txStatus === "sending" && "Submitting transaction..."}
-              {txStatus === "retrying" && `Retrying transaction (${retryCount})...`}
-              {txStatus === "success" && "Transaction sent"}
-              {txStatus === "failed" && "Try again"}
-              {txStatus === "idle" && "Confirm Transfer"}
-            </Button>
+          <Button
+  type="button"
+  onClick={sendTransaction}
+  disabled={loading}
+>
+  {loading ? "Processing..." : "Confirm Transfer"}
+</Button>
 
             {txStatus === "sending" && (
               <p className="text-sm text-blue-500 mt-2">
