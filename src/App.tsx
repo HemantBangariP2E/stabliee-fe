@@ -27,35 +27,35 @@ const App = () =>
 {
   const scriptLoaded = useRef(false);
 
-  useEffect(() => {
-      if (scriptLoaded.current) return;
-      scriptLoaded.current = true;
+  // useEffect(() => {
+  //     if (scriptLoaded.current) return;
+  //     scriptLoaded.current = true;
   
-      if (document.querySelector('script[src="https://embedded-wallet.kalp.studio/my-widget.js"]')) {
-        return;
-      }
+  //     if (document.querySelector('script[src="https://embedded-wallet.kalp.studio/my-widget.js"]')) {
+  //       return;
+  //     }
   
-      const script = document.createElement("script");
-      script.src = "https://embedded-wallet.kalp.studio/my-widget.js";
-      script.async = true;
-      script.onload = () => {
-        if (window.renderMyWidget) {
-          console.log("Rendering Widget");
-          window.renderMyWidget(
-            "kalp-wallet-container",
-            "d4d3f472f87499f50b6dfc537c00ca223d03f089b8afd4879c701cc5231a25a3", // API key
-            "/dashboard" // Replace with your redirect URL
-          );
-        } else {
-          console.error("SDK not loaded yet");
-        }
-      };
-      document.body.appendChild(script);
+  //     const script = document.createElement("script");
+  //     script.src = "https://embedded-wallet.kalp.studio/my-widget.js";
+  //     script.async = true;
+  //     script.onload = () => {
+  //       if (window.renderMyWidget) {
+  //         console.log("Rendering Widget");
+  //         window.renderMyWidget(
+  //           "kalp-wallet-container",
+  //           "d4d3f472f87499f50b6dfc537c00ca223d03f089b8afd4879c701cc5231a25a3", // API key
+  //           "/dashboard" // Replace with your redirect URL
+  //         );
+  //       } else {
+  //         console.error("SDK not loaded yet");
+  //       }
+  //     };
+  //     document.body.appendChild(script);
   
-      return () => {
-        script.remove();
-      };
-    }, []);
+  //     return () => {
+  //       script.remove();
+  //     };
+  //   }, []);
     
  return <QueryClientProvider client={queryClient}>
     <TooltipProvider>
