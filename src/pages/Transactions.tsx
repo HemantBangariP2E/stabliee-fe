@@ -423,35 +423,7 @@ const insertTransaction = async ({
       : msg;
   };
 
-  const executeWithRetry = async (fn: () => Promise<any>, retries = 2) => {
-    let attempt = 0;
-
-    while (attempt <= retries) {
-      try {
-        if (attempt === 0) {
-          setTxStatus("sending");
-        } else {
-          setTxStatus("retrying");
-          setRetryCount(attempt);
-        }
-
-        const result = await fn();
-
-        setTxStatus("success");
-        return result;
-      } catch (err) {
-        attempt++;
-
-        if (attempt > retries) {
-          setTxStatus("failed");
-          throw err;
-        }
-
-        console.log("Retrying relay attempt:", attempt);
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      }
-    }
-  };
+  
 
   const isRecipientInDb = async (walletAddress: string): Promise<boolean> => {
     const addr = walletAddress.trim();
@@ -616,23 +588,22 @@ await supabase
         if (typeof executeMPCTxn !== 'function') {
           throw new Error('Embedded wallet is not ready. Refresh the page and try again, or sign in again from the login page.');
         }
-        const hash = await executeWithRetry(() =>
-          executeMPCTxn(
-            localStorage.getItem("ownerAddress"),
-            recipientAddress,
-            parseInt(amount),
-            parseInt(localStorage.getItem("chainIdConfig")),
-            localStorage.getItem("networkName"),
-            blockchainName,
-            tokenContractAddress,
-            localStorage.getItem("userShard"),
-            localStorage.getItem("userIdentifier"),
-            fee,
-            feeRecipient
-          )
-        );
+        const hash = await executeMPCTxn(
+  localStorage.getItem("ownerAddress"),
+  recipientAddress,
+  parseInt(amount),
+  parseInt(localStorage.getItem("chainIdConfig")),
+  localStorage.getItem("networkName"),
+  blockchainName,
+  tokenContractAddress,
+  localStorage.getItem("userShard"),
+  localStorage.getItem("userIdentifier"),
+  fee,
+  feeRecipient
+);
+
         console.log("Transaction hash:", hash);
-        setTxHash(hash.txHash);
+        // setTxHash(hash.txHash);
 const pendingHash = "PENDING_" + Date.now();
 await insertTransaction({
   txHash: hash.txHash,
