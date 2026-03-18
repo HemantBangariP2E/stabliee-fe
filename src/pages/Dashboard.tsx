@@ -48,7 +48,7 @@ const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
   }
   return {
     rpcUrl: "https://mainnet.base.org",
-    tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3", // Base mainnet token
+    tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet token
   };
 };
 

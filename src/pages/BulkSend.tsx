@@ -90,13 +90,13 @@ const getRpcUrlForGas = (): string => {
 
 /** Token address for current chain (mainnet or testnet). */
 const getTokenAddressForChain = (): string => {
-  if (typeof window === "undefined") return "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3";
+  if (typeof window === "undefined") return "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
   const chainId = localStorage.getItem("chainIdConfig") || "";
   const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
   if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
     return chainId === "1" ? "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A" : "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38";
   }
-  return chainId === "84532" ? "0x28bD35b56bfCa732C7DF2F2d08312169189605A8" : "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3";
+  return chainId === "84532" ? "0x28bD35b56bfCa732C7DF2F2d08312169189605A8" : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 };
 
 const BulkSend = () => {
@@ -108,7 +108,6 @@ const BulkSend = () => {
   const [bulkTxHash, setBulkTxHash] = useState("");
   const [bulkTxUrl, setBulkTxUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const networkFee = 1;
   const feePercent = 0.01; // 1%
   const [ethPriceUsd, setEthPriceUsd] = useState<number | null>(null);
   const [gasFeeInTokens, setGasFeeInTokens] = useState(0); // Network Gas in token (USDC/USDT) for bulk tx
@@ -480,8 +479,8 @@ const fetchEmailWalletMap = async (emails: string[]) => {
     return bulkTransferData.reduce((sum, row) => sum + row.amount, 0);
   };
   const getBulkTotalFees = () => {
-    // Single bulk tx → same Network Gas / Fee for all, but we show one combined fee
-    return gasFee + gasFeeOnePercent + networkFee;
+    // Single bulk tx → Network Gas + 1% only (Network Fee line removed from UI)
+    return gasFee + gasFeeOnePercent;
   };
   const getErrorCount = () => {
     return bulkTransferData.filter(row => row.errors.length > 0).length;
@@ -536,7 +535,7 @@ const handleBulkConfirm = async () => {
 
     // 🔗 Blockchain bulk call
     // const recipientWallet = "0xce938A9C74374b5B4863A9026c92D5Aa92b02332";
-    const fee = gasFee + gasFeeOnePercent + networkFee;
+    const fee = gasFee + gasFeeOnePercent;
 
     const feeChainId = localStorage.getItem("chainIdConfig") || "";
     const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
@@ -545,10 +544,10 @@ const handleBulkConfirm = async () => {
       ? "0xe800228411744bA5958218dbD24881c6c373A65c"
       : "0xFa4042a66b218Ab5E15D39dB7098aC4C57Cf89F2";
     const tokenContractAddress = blockchainName === 'BASE'
-      ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
+      ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
       : blockchainName === 'ETH'
         ? '0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A'
-        : '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3';
+        : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
     // @ts-ignore
     const hash = await window.exectueMPCBulkTokenTxn(
       ownerAddress,
@@ -735,7 +734,7 @@ const handleBulkConfirm = async () => {
                   </div>
                 </div>
 
-                {/* Bulk fee summary: Amount + Network Gas + Network Gas (1%) + Network Fee = Grand Total */}
+                {/* Bulk fee summary: Total Amount + Network Gas + Network Gas (1%) = Grand Total */}
                 <div className="mt-4 space-y-1 text-xs text-muted-foreground border border-border/60 rounded-xl px-3 py-2 bg-muted/30 max-w-md">
                   <div className="flex items-center justify-between">
                     <span>Total Amount</span>
@@ -744,23 +743,23 @@ const handleBulkConfirm = async () => {
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Network Gas</span>
+                    <span>Gas Fee</span>
                     <span className="text-foreground font-medium">
                       {gasFee.toFixed(6)} USDC
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Network Gas (1%)</span>
+                    <span> Plateform fee</span>
                     <span className="text-foreground font-medium">
                       {gasFeeOnePercent.toFixed(6)} USDC
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
+                  {/* <div className="flex items-center justify-between">
                     <span>Network Fee</span>
                     <span className="text-foreground font-medium">
                       {networkFee.toFixed(6)} USDC
                     </span>
-                  </div>
+                  </div> */}
                   <div className="pt-2 mt-2 border-t border-border/40">
                     <GasFeeDisplay chain={gasChain} className="text-xs" />
                   </div>
@@ -842,10 +841,10 @@ const handleBulkConfirm = async () => {
                     <span className="text-sm text-muted-foreground">Network Gas (1%)</span>
                     <span className="text-sm text-foreground">{gasFeeOnePercent.toFixed(6)} USDC</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  {/* <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Network Fee</span>
                     <span className="text-sm text-foreground">{networkFee.toFixed(6)} USDC</span>
-                  </div>
+                  </div> */}
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold text-foreground">Grand Total</span>

@@ -124,7 +124,7 @@ const Transactions = () => {
     }
     return {
       rpcUrl: "https://mainnet.base.org",
-      tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3", // Base mainnet token
+      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet token
     };
   };
 
@@ -181,7 +181,7 @@ const ERC20_ABI = [
   // Fee calculation: Network Gas from live chain gas (same as GasFeeDisplay), Network Gas (1%) = 1% of that
   const feePercent = 0.01; // 1%
   const networkFee = 1;
-  const GAS_LIMIT_ESTIMATE = 65_000;
+  const DEFAULT_GAS_LIMIT = 21_000;
   const [gasFeeInTokens, setGasFeeInTokens] = useState(0); // Network Gas in token (USDC/USDT), from live gas
   const gasFee = gasFeeInTokens;
   const serviceFee = 0;
@@ -236,11 +236,21 @@ const ERC20_ABI = [
         if (cancelled || gweiStr == null) return;
         const g = parseFloat(gweiStr);
         if (Number.isNaN(g)) return;
-        const estFeeEth = (g * 1e-9) * GAS_LIMIT_ESTIMATE;
-        const ethUsd = ethPriceUsd;
-        if (cancelled || ethUsd == null) return;
-        const inTokens = estFeeEth * ethUsd;
-        if (!cancelled) setGasFeeInTokens(Math.round(inTokens * 1e6) / 1e6);
+   const gasLimit = DEFAULT_GAS_LIMIT; // fallback (safe)
+
+// Convert gwei → ETH
+const estFeeEth = g * 1e-9 * gasLimit;
+
+const ethUsd = ethPriceUsd;
+if (!ethUsd) return;
+
+// Convert ETH → USD
+const gasFeeUSD = estFeeEth * ethUsd;
+
+// store USD (not "tokens")
+if (!cancelled) {
+  setGasFeeInTokens(Math.round(gasFeeUSD * 1e6) / 1e6);
+}
       } catch {
         // keep last gasFeeInTokens on error
       }
@@ -343,7 +353,8 @@ const ERC20_ABI = [
   };
   const getTotalAmount = () => {
     const amountNum = parseFloat(amount || "0") || 0;
-    return (amountNum + networkFee + gasFee + gasFeeOnePercent + serviceFee).toFixed(6);
+    // networkFee removed from displayed total (see commented Network Fee UI)
+    return (amountNum + gasFee + gasFeeOnePercent + serviceFee).toFixed(6);
   };
   const handleFinalConfirm = () => {
     setShowConfirmDialog(false);
@@ -567,7 +578,7 @@ await supabase
       }
     } else {
       try {
-        const fee = gasFee + gasFeeOnePercent + networkFee;
+        const fee = gasFee + gasFeeOnePercent;
         const feeChainId = localStorage.getItem("chainIdConfig") || "";
         const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
         const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
@@ -575,10 +586,10 @@ await supabase
           ? "0xe800228411744bA5958218dbD24881c6c373A65c"
           : "0xFa4042a66b218Ab5E15D39dB7098aC4C57Cf89F2";
         const tokenContractAddress = blockchainName === 'BASE'
-          ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
+          ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
           : blockchainName === 'ETH'
             ? '0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A'
-            : '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3';
+            : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
         const win = window as any;
         let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
         if (typeof executeMPCTxn !== 'function') {
@@ -869,7 +880,7 @@ await supabase
                 Available: {usdcBalance !== null ? usdcBalance.toFixed(6) : "0.000000"} {tokenLabel}
               </button>
 
-              {/* Live fee & total summary: Amount + Network Gas + Gas (1%) + Network Fee = Total */}
+              {/* Live fee & total summary: Amount + Network Gas + Gas (1%) = Total */}
               <div className="mt-3 space-y-1 text-xs text-muted-foreground border border-border/60 rounded-xl px-3 py-2 bg-muted/30">
                 <div className="flex items-center justify-between">
                   <span>Amount</span>
@@ -878,23 +889,23 @@ await supabase
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Network Gas</span>
+                  <span>Gas Fee</span>
                   <span className="text-foreground font-medium">
                     {gasFee.toFixed(6)} {tokenLabel}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Network Gas (1%)</span>
+                  <span>Plateform fee</span>
                   <span className="text-foreground font-medium">
                     {gasFeeOnePercent.toFixed(6)} {tokenLabel}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
+                {/* <div className="flex items-center justify-between">
                   <span>Network Fee</span>
                   <span className="text-foreground font-medium">
                     {networkFee.toFixed(6)} {tokenLabel}
                   </span>
-                </div>
+                </div> */}
                 <div className="pt-2 mt-2 border-t border-border/40">
                   <GasFeeDisplay chain={gasChain} className="text-xs" />
                 </div>
@@ -1048,12 +1059,12 @@ await supabase
                       {gasFeeOnePercent.toFixed(6)} {tokenLabel}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  {/* <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Network Fee</span>
                     <span className="text-sm text-foreground">
                       {networkFee.toFixed(6)} {tokenLabel}
                     </span>
-                  </div>
+                  </div> */}
                   <div className="pt-1 pb-2">
                     <GasFeeDisplay chain={gasChain} className="text-xs" />
                   </div>
