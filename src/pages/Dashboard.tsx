@@ -87,11 +87,40 @@ const chartData = [{
 }];
 type MoneyAction = "add" | "withdraw";
 type SelectedCoin = "USDC" | "EURC";
+
+function getConnectedTokenLabel(): string {
+  if (typeof window === "undefined") return "USDC";
+  const chainId = localStorage.getItem("chainIdConfig") || "";
+  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
+    return "USDT";
+  }
+  return "USDC";
+}
+
+function getConnectedNetworkDisplay(): { name: string; isBase: boolean } {
+  if (typeof window === "undefined") return { name: "Base", isBase: true };
+  const chainId = localStorage.getItem("chainIdConfig") || "";
+  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
+    return {
+      name: chainId === "1" ? "Ethereum" : "Ethereum (Sepolia)",
+      isBase: false,
+    };
+  }
+  return {
+    name: chainId === "84532" ? "Base Sepolia" : "Base",
+    isBase: true,
+  };
+}
+
 const Dashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const userIdentifier = localStorage.getItem("userIdentifier") || undefined;
   const ownerAddress = localStorage.getItem("ownerAddress") || undefined;
+  const connectedTokenLabel = getConnectedTokenLabel();
+  const connectedNetwork = getConnectedNetworkDisplay();
 
   const [totalSent, setTotalSent] = useState(0);
   const [totalReceived, setTotalReceived] = useState(0);
@@ -114,6 +143,11 @@ const Dashboard = () => {
     }
   }, [ownerAddress, navigate]);
 
+  const chainKey =
+    typeof window !== "undefined"
+      ? `${localStorage.getItem("chainIdConfig") ?? ""}_${localStorage.getItem("blockchainName") ?? ""}`
+      : "";
+
   useEffect(() => {
     if (!ownerAddress) return;
     let cancelled = false;
@@ -126,8 +160,10 @@ const Dashboard = () => {
         if (!cancelled) setUsdcBalance(null);
       }
     })();
-    return () => { cancelled = true; };
-  }, [ownerAddress]);
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerAddress, chainKey]);
 
   const toggleHideNumbers = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -370,10 +406,12 @@ console.log({usdcBalance,totalBalance})
                 <tr className="border-b border-border/50">
                   <td className="py-4">
                     <div className="flex items-center gap-3">
-                      <img src={usdcLogo} alt="USDC" className="w-10 h-10" />
+                      <img src={usdcLogo} alt={connectedTokenLabel} className="w-10 h-10" />
                       <div>
-                        <p className="font-semibold text-foreground text-base">KC</p>
-                        <p className="text-sm text-muted-foreground">KC Coin</p>
+                        <p className="font-semibold text-foreground text-base">{connectedTokenLabel}</p>
+                        {/* <p className="text-sm text-muted-foreground">
+                          {connectedTokenLabel === "USDT" ? "Tether USD" : "USD Coin"}
+                        </p> */}
                       </div>
                     </div>
                   </td>
@@ -399,15 +437,19 @@ console.log({usdcBalance,totalBalance})
             <div className="border border-border rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <img src={usdcLogo} alt="USDC" className="w-9 h-9" />
+                  <img src={usdcLogo} alt={connectedTokenLabel} className="w-9 h-9" />
                   <div>
-                    <p className="font-medium text-foreground">KC</p>
-                    <p className="text-xs text-muted-foreground">KC Coin</p>
+                    <p className="font-medium text-foreground">{connectedTokenLabel}</p>
+                    {/* <p className="text-xs text-muted-foreground">
+                      {connectedTokenLabel === "USDT" ? "Tether USD" : "USD Coin"}
+                    </p> */}
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</p>
-                  <p className="text-xs text-muted-foreground">{hideNumbers ? "••••••" : (usdcBalance ? usdcBalance : 0).toFixed(6)} KC</p>
+                  <p className="text-xs text-muted-foreground">
+                    {hideNumbers ? "••••••" : `${(usdcBalance ? usdcBalance : 0).toFixed(6)} ${connectedTokenLabel}`}
+                  </p>
                 </div>
               </div>
             </div>
@@ -424,13 +466,19 @@ console.log({usdcBalance,totalBalance})
         <Dialog open={receiveModalOpen} onOpenChange={setReceiveModalOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-center">Receive KC</DialogTitle>
+              <DialogTitle className="text-center">Receive {connectedTokenLabel}</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col items-center py-6">
               {/* Network Badge */}
               <div className="flex items-center gap-2 mb-4 px-3 py-1.5 bg-muted rounded-full">
-                <img src={baseLogo} alt="Base" className="w-5 h-5 rounded-full" />
-                <span className="text-sm font-medium">Base Network</span>
+                {connectedNetwork.isBase ? (
+                  <img src={baseLogo} alt="Base" className="w-5 h-5 rounded-full" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-muted-foreground/20 flex items-center justify-center text-[10px] font-bold">
+                    Ξ
+                  </div>
+                )}
+                <span className="text-sm font-medium">{connectedNetwork.name}</span>
               </div>
 
               {/* QR Code */}
@@ -465,7 +513,7 @@ console.log({usdcBalance,totalBalance})
 
               {/* Info Note */}
               <p className="text-xs text-muted-foreground mt-4 text-center">
-                Only send KC on Base network to this address
+                Only send {connectedTokenLabel} on {connectedNetwork.name} to this address
               </p>
             </div>
           </DialogContent>

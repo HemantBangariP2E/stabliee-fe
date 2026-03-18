@@ -4,26 +4,18 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Wallet, Copy } from "lucide-react";
 import { supabase } from "@/hooks/supabaseClient";
 import { toast } from "@/hooks/use-toast";
 
 const Settings = () => {
   const [walletAddress, setWalletAddress] = useState("");
-  const [selectedChain, setSelectedChain] = useState("base");
+  const [chainSummary, setChainSummary] = useState("");
 
   useEffect(() => {
-    const blockchainName = (
-      localStorage.getItem("blockchainName") || "BASE"
-    ).toUpperCase();
-    setSelectedChain(blockchainName === "ETH" ? "eth" : "base");
+    const name = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+    const id = localStorage.getItem("chainIdConfig") || "—";
+    setChainSummary(`${name === "ETH" ? "Ethereum" : "Base"} · Chain ID ${id}`);
   }, []);
 
   useEffect(() => {
@@ -93,26 +85,16 @@ const Settings = () => {
             </div>
             <div className="space-y-4 max-w-2xl">
               <div className="space-y-2">
-                <Label className="text-sm">Chain</Label>
-                <Select value={selectedChain} onValueChange={setSelectedChain}>
-                  <SelectTrigger className="h-11 rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="base">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-full bg-[#0052FF] flex items-center justify-center">
-                          <span className="text-[8px] text-white font-bold">B</span>
-                        </div>
-                        Base
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="eth">Ethereum</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label className="text-sm">Network</Label>
+                <Input
+                  readOnly
+                  value={chainSummary}
+                  className="h-11 rounded-xl bg-muted/50 text-sm"
+                  placeholder="—"
+                />
                 <p className="text-xs text-muted-foreground">
-                  Network selection is also set when you connect; this reflects your
-                  current preference.
+                  Set when you connect your wallet. Change network from the login /
+                  connect flow.
                 </p>
               </div>
               <div className="space-y-2">
