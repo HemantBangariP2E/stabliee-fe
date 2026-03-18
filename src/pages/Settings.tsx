@@ -1,36 +1,97 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bell, Shield, Palette, Wallet, Code } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Wallet, Copy } from "lucide-react";
+import { supabase } from "@/hooks/supabaseClient";
+import { toast } from "@/hooks/use-toast";
+
 const Settings = () => {
-  const [receiverAddress, setReceiverAddress] = useState("0x7e5881f281a7c47f7064f4607d61");
+  const [walletAddress, setWalletAddress] = useState("");
   const [selectedChain, setSelectedChain] = useState("base");
-  return <DashboardLayout>
+
+  useEffect(() => {
+    const blockchainName = (
+      localStorage.getItem("blockchainName") || "BASE"
+    ).toUpperCase();
+    setSelectedChain(blockchainName === "ETH" ? "eth" : "base");
+  }, []);
+
+  useEffect(() => {
+    const run = async () => {
+      const fromLs = localStorage.getItem("ownerAddress")?.trim() || "";
+      const userId = localStorage.getItem("userIdentifier")?.trim() || "";
+
+      if (fromLs) {
+        setWalletAddress(fromLs);
+      }
+
+      if (!userId && !fromLs) {
+        if (!fromLs) setWalletAddress("");
+        return;
+      }
+
+      let q = supabase.from("user_logins").select("owner_address");
+      if (userId) {
+        q = q.eq("user_identifier", userId);
+      } else {
+        q = q.eq("owner_address", fromLs);
+      }
+      const { data, error } = await q.maybeSingle();
+      if (!error && data?.owner_address) {
+        setWalletAddress(data.owner_address);
+      } else if (!fromLs) {
+        setWalletAddress("");
+      }
+    };
+    run();
+  }, []);
+
+  const copyAddress = async () => {
+    if (!walletAddress) return;
+    try {
+      await navigator.clipboard.writeText(walletAddress);
+      toast({ title: "Copied", description: "Wallet address copied to clipboard." });
+    } catch {
+      toast({ title: "Copy failed", variant: "destructive" });
+    }
+  };
+
+  return (
+    <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-          <p className="text-muted-foreground">Manage your account settings and preferences</p>
+          <h1 className="text-2xl font-bold text-foreground">Account & wallet</h1>
+          <p className="text-muted-foreground">
+            Manage your receiving wallet and network
+          </p>
         </div>
 
         <div className="grid gap-6">
-
-          {/* Receiver Details */}
           <Card className="p-6 rounded-2xl">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                 <Wallet className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-foreground">Receiver Details</h2>
-                <p className="text-sm text-muted-foreground">Configure your receiving wallet</p>
+                <h2 className="text-lg font-semibold text-foreground">
+                  Receiver Details
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Your connected MPC / receiving wallet
+                </p>
               </div>
             </div>
-            <div className="space-y-4 max-w-md">
+            <div className="space-y-4 max-w-2xl">
               <div className="space-y-2">
                 <Label className="text-sm">Chain</Label>
                 <Select value={selectedChain} onValueChange={setSelectedChain}>
@@ -43,17 +104,45 @@ const Settings = () => {
                         <div className="w-4 h-4 rounded-full bg-[#0052FF] flex items-center justify-center">
                           <span className="text-[8px] text-white font-bold">B</span>
                         </div>
-                        Base Chain
+                        Base
                       </div>
                     </SelectItem>
+                    <SelectItem value="eth">Ethereum</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Network selection is also set when you connect; this reflects your
+                  current preference.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label className="text-sm">Receiver Wallet Address</Label>
-                <Input placeholder="0x..." value={receiverAddress} disabled className="h-11 rounded-xl font-mono text-sm bg-muted/50 cursor-not-allowed" />
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    placeholder="Sign in to see your wallet address"
+                    value={walletAddress}
+                    className="h-11 rounded-xl font-mono text-sm bg-muted/50"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-11 w-11 shrink-0 rounded-xl"
+                    onClick={copyAddress}
+                    disabled={!walletAddress}
+                    aria-label="Copy wallet address"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+                {!walletAddress && (
+                  <p className="text-xs text-muted-foreground">
+                    No wallet found. Sign in from the login page so your address is
+                    stored, then open Settings again.
+                  </p>
+                )}
               </div>
-              
             </div>
           </Card>
 
@@ -70,6 +159,8 @@ const Settings = () => {
           
         </div>
       </div>
-    </DashboardLayout>;
+    </DashboardLayout>
+  );
 };
+
 export default Settings;
