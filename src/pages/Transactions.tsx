@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 // import { parseUnits } from "ethers";
 import { useSearchParams } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -178,90 +178,15 @@ const ERC20_ABI = [
       return () => { cancelled = true; };
     }, [ownerAddress]);
 
-  // Fee calculation: Network Gas from live chain gas (same as GasFeeDisplay), Network Gas (1%) = 1% of that
-  const feePercent = 0.01; // 1%
+  const feePercent = 0.01; // platform fee as 1% of gas (USD)
   const networkFee = 1;
-  const DEFAULT_GAS_LIMIT = 21_000;
-  const [gasFeeInTokens, setGasFeeInTokens] = useState(0); // Network Gas in token (USDC/USDT), from live gas
-  const gasFee = gasFeeInTokens;
+  const [gasFeeUSD, setGasFeeUSD] = useState(0);
   const serviceFee = 0;
-  const gasFeeOnePercent = gasFee * feePercent;
+  const platformFeeUSD = gasFeeUSD * feePercent;
 
-  const COINGECKO_INTERVAL_MS = 15 * 60 * 1000; // 15 min to avoid 429
-  const [ethPriceUsd, setEthPriceUsd] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const fetchPrice = async () => {
-      try {
-        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
-        if (!res.ok) return;
-        const json = await res.json();
-        if (!cancelled && json?.ethereum?.usd != null) setEthPriceUsd(Number(json.ethereum.usd));
-      } catch {
-        // keep last price
-      }
-    };
-    fetchPrice();
-    const t = setInterval(fetchPrice, COINGECKO_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
+  const handleGasUsdUpdate = useCallback((usd: number) => {
+    setGasFeeUSD(usd);
   }, []);
-
-  // Cache gas price per RPC URL to avoid hitting the RPC too often
-  const GAS_CACHE_MS = 55_000; // reuse cached gas for 55s
-  const GAS_POLL_INTERVAL_MS = 60_000; // poll at most every 60s
-  const gasCacheRef = useRef<{ rpcUrl: string; gasPriceWei: bigint; at: number } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const { rpcUrl } = getRpcUrlAndToken();
-    const run = async () => {
-      try {
-        const now = Date.now();
-        const cached = gasCacheRef.current;
-        let gasPriceWei: bigint | null = null;
-        if (cached && cached.rpcUrl === rpcUrl && now - cached.at < GAS_CACHE_MS) {
-          gasPriceWei = cached.gasPriceWei;
-        }
-        if (gasPriceWei == null) {
-          const provider = new ethers.JsonRpcProvider(rpcUrl);
-          const feeData = await provider.getFeeData();
-          gasPriceWei = feeData.gasPrice ?? feeData.maxFeePerGas ?? null;
-          if (gasPriceWei != null) gasCacheRef.current = { rpcUrl, gasPriceWei, at: Date.now() };
-        }
-        const gweiStr = gasPriceWei != null ? ethers.formatUnits(gasPriceWei, "gwei") : null;
-        if (cancelled || gweiStr == null) return;
-        const g = parseFloat(gweiStr);
-        if (Number.isNaN(g)) return;
-   const gasLimit = DEFAULT_GAS_LIMIT; // fallback (safe)
-
-// Convert gwei → ETH
-const estFeeEth = g * 1e-9 * gasLimit;
-
-const ethUsd = ethPriceUsd;
-if (!ethUsd) return;
-
-// Convert ETH → USD
-const gasFeeUSD = estFeeEth * ethUsd;
-
-// store USD (not "tokens")
-if (!cancelled) {
-  setGasFeeInTokens(Math.round(gasFeeUSD * 1e6) / 1e6);
-}
-      } catch {
-        // keep last gasFeeInTokens on error
-      }
-    };
-    run();
-    const t = setInterval(run, GAS_POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [gasChain, ethPriceUsd]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -308,7 +233,7 @@ if (!cancelled) {
       });
       return;
     }
-    if (gasFeeInTokens <= 0) {
+    if (gasFeeUSD <= 0) {
       toast({
         title: "Network Fee Loading",
         description: "Please wait for network gas fees to load before confirming.",
@@ -354,7 +279,7 @@ if (!cancelled) {
   const getTotalAmount = () => {
     const amountNum = parseFloat(amount || "0") || 0;
     // networkFee removed from displayed total (see commented Network Fee UI)
-    return (amountNum + gasFee + gasFeeOnePercent + serviceFee).toFixed(6);
+    return (amountNum + gasFeeUSD + platformFeeUSD + serviceFee).toFixed(6);
   };
   const handleFinalConfirm = () => {
     setShowConfirmDialog(false);
@@ -578,7 +503,7 @@ await supabase
       }
     } else {
       try {
-        const fee = gasFee + gasFeeOnePercent;
+        const fee = gasFeeUSD + platformFeeUSD;
         const feeChainId = localStorage.getItem("chainIdConfig") || "";
         const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
         const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
@@ -891,13 +816,13 @@ await supabase
                 <div className="flex items-center justify-between">
                   <span>Gas Fee</span>
                   <span className="text-foreground font-medium">
-                    {gasFee.toFixed(6)} {tokenLabel}
+                    ${gasFeeUSD.toFixed(6)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Plateform fee</span>
+                  <span>Platform fee</span>
                   <span className="text-foreground font-medium">
-                    {gasFeeOnePercent.toFixed(6)} {tokenLabel}
+                    ${platformFeeUSD.toFixed(6)}
                   </span>
                 </div>
                 {/* <div className="flex items-center justify-between">
@@ -907,7 +832,11 @@ await supabase
                   </span>
                 </div> */}
                 <div className="pt-2 mt-2 border-t border-border/40">
-                  <GasFeeDisplay chain={gasChain} className="text-xs" />
+                  <GasFeeDisplay
+                    chain={gasChain}
+                    className="text-xs"
+                    onGasUpdate={handleGasUsdUpdate}
+                  />
                 </div>
                 <div className="h-px bg-border/60 my-1" />
                 <div className="flex items-center justify-between">
@@ -929,7 +858,7 @@ await supabase
                
                 !amount ||
                 parseFloat(amount) <= 0 ||
-                gasFeeInTokens <= 0 ||
+                gasFeeUSD <= 0 ||
                 (sendInputMode === "email" ? !recipientEmail?.trim() : !recipientWallet?.trim())
               }
 >
@@ -1048,15 +977,15 @@ await supabase
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Network Gas</span>
+                    <span className="text-sm text-muted-foreground">Gas Fee</span>
                     <span className="text-sm text-foreground">
-                      {gasFee.toFixed(6)} {tokenLabel}
+                      ${gasFeeUSD.toFixed(6)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Network Gas (1%)</span>
+                    <span className="text-sm text-muted-foreground">Platform fee</span>
                     <span className="text-sm text-foreground">
-                      {gasFeeOnePercent.toFixed(6)} {tokenLabel}
+                      ${platformFeeUSD.toFixed(6)}
                     </span>
                   </div>
                   {/* <div className="flex justify-between items-center">

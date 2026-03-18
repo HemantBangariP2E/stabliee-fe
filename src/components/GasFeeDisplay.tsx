@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { JsonRpcProvider, formatUnits } from "ethers";
 
 const RPC_URLS = {
@@ -58,35 +58,50 @@ function primaryGwei(data: GasFeeData | null): string | null {
 type GasFeeDisplayProps = {
   chain?: "eth" | "base" | "both";
   className?: string;
+  /** Called with estimated gas cost in USD whenever gas or ETH price updates (single chain only). */
+  onGasUpdate?: (usd: number) => void;
 };
 
 const REFRESH_MS = 15_000;
-const DEFAULT_GAS_LIMIT = 21_000; // safer default
+/** ERC-20–style transfer estimate; defined only here (single source). */
+const ESTIMATED_GAS_UNITS = 65_000;
 const ETH_PRICE_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
 
-/** Convert gwei → ETH using gas limit */
-function gweiToEthEstimate(
+function gweiToEthForGas(
   gweiStr: string | null,
-  gasLimit = DEFAULT_GAS_LIMIT
+  gasUnits: number
 ): number | null {
   if (!gweiStr) return null;
-
   const g = Number(gweiStr);
   if (Number.isNaN(g)) return null;
+  return g * 1e-9 * gasUnits;
+}
 
-  return g * 1e-9 * gasLimit;
+function usdFromGwei(
+  gweiStr: string | null,
+  ethPriceUsd: number | null,
+  gasUnits: number
+): number {
+  if (ethPriceUsd == null) return 0;
+  const eth = gweiToEthForGas(gweiStr, gasUnits);
+  if (eth == null) return 0;
+  return Math.round(eth * ethPriceUsd * 1e6) / 1e6;
 }
 
 export function GasFeeDisplay({
   chain = "both",
   className = "",
+  onGasUpdate,
 }: GasFeeDisplayProps) {
   const [baseData, setBaseData] = useState<GasFeeData | null>(null);
   const [ethData, setEthData] = useState<GasFeeData | null>(null);
   const [ethPriceUsd, setEthPriceUsd] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  const onGasUpdateRef = useRef(onGasUpdate);
+  onGasUpdateRef.current = onGasUpdate;
 
   const fetchChain = useCallback(async (which: "base" | "eth") => {
     try {
@@ -98,7 +113,6 @@ export function GasFeeDisplay({
     }
   }, []);
 
-  // Fetch ETH price
   useEffect(() => {
     let cancelled = false;
 
@@ -111,7 +125,9 @@ export function GasFeeDisplay({
         if (!cancelled && json?.ethereum?.usd != null) {
           setEthPriceUsd(Number(json.ethereum.usd));
         }
-      } catch {}
+      } catch {
+        /* keep last */
+      }
     };
 
     fetchEthPrice();
@@ -123,7 +139,6 @@ export function GasFeeDisplay({
     };
   }, []);
 
-  // Fetch gas data
   useEffect(() => {
     let cancelled = false;
 
@@ -169,6 +184,18 @@ export function GasFeeDisplay({
     };
   }, [chain, fetchChain]);
 
+  useEffect(() => {
+    if (!onGasUpdateRef.current || chain === "both") return;
+    if (loading) return;
+    const data = chain === "base" ? baseData : ethData;
+    const gwei = primaryGwei(data);
+    if (gwei == null || ethPriceUsd == null) {
+      onGasUpdateRef.current(0);
+      return;
+    }
+    onGasUpdateRef.current(usdFromGwei(gwei, ethPriceUsd, ESTIMATED_GAS_UNITS));
+  }, [chain, baseData, ethData, ethPriceUsd, loading]);
+
   if (loading && !baseData && !ethData) {
     return <div className={className}>Loading gas fee...</div>;
   }
@@ -183,32 +210,36 @@ export function GasFeeDisplay({
   const to6 = (v: number) => (Number.isNaN(v) ? "—" : v.toFixed(6));
 
   const formatEth = (gwei: string | null) => {
-    const eth = gweiToEthEstimate(gwei);
+    const eth = gweiToEthForGas(gwei, ESTIMATED_GAS_UNITS);
     return eth != null ? to6(eth) : "—";
   };
 
   const formatUSD = (gwei: string | null) => {
-    const eth = gweiToEthEstimate(gwei);
-    if (eth == null || ethPriceUsd == null) return "—";
-    return `$${to6(eth * ethPriceUsd)}`;
+    if (gwei == null || ethPriceUsd == null) return "—";
+    const usd = usdFromGwei(gwei, ethPriceUsd, ESTIMATED_GAS_UNITS);
+    return `$${to6(usd)}`;
   };
 
   const renderLine = (label: string, gwei: string | null) => (
     <div>
-      <span>{label} </span>
-      <strong>{gwei ?? "—"} gwei</strong> ≈{" "}
-      <strong>{formatEth(gwei)} ETH</strong> ≈{" "}
+      <span className="text-muted-foreground">{label} </span>
+      <strong>{gwei ?? "—"} gwei</strong>
+      <span className="text-muted-foreground"> ≈ </span>
+      <strong>{formatEth(gwei)} ETH</strong>
+      <span className="text-muted-foreground"> ≈ </span>
       <strong>{formatUSD(gwei)}</strong>
     </div>
   );
 
   return (
     <div className={className}>
-      {(chain === "base" || chain === "both") && baseData &&
-        renderLine("Base Gas:", baseGwei)}
+      {(chain === "base" || chain === "both") && baseData && (
+        <>{renderLine("Base Gas:", baseGwei)}</>
+      )}
 
-      {(chain === "eth" || chain === "both") && ethData &&
-        renderLine("ETH Gas:", ethGwei)}
+      {(chain === "eth" || chain === "both") && ethData && (
+        <>{renderLine("ETH Gas:", ethGwei)}</>
+      )}
     </div>
   );
 }
