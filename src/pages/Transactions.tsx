@@ -821,7 +821,7 @@ await supabase
                 <div className="flex items-center justify-between">
                   <span>Amount</span>
                   <span className="text-foreground font-medium">
-                    {parseFloat(amount || "0").toFixed(6)} {tokenLabel}
+                    {amount || "0"} {tokenLabel}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -984,7 +984,7 @@ await supabase
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Amount</span>
                     <span className="text-sm font-medium text-foreground">
-                      {parseFloat(amount || "0").toFixed(6)} {tokenLabel}
+                      {amount || "0"} {tokenLabel}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">

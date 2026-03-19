@@ -85,6 +85,11 @@ function bulkGasUsdScale(recipientCount: number): number {
   return units / BULK_BASE_GAS_UNITS;
 }
 
+/** Show exact amount - e.g. 0.000000001 stays as-is, 100 shows without trailing zeros */
+function formatExactAmount(n: number): string {
+  return n.toFixed(18).replace(/\.?0+$/, "");
+}
+
 const BulkSend = () => {
   const [bulkSendMode, setBulkSendMode] = useState<"email" | "wallet">("email");
   const [bulkTransferData, setBulkTransferData] = useState<BulkTransferRow[]>([]);
@@ -485,7 +490,7 @@ const handleBulkConfirm = async () => {
     setBulkTransferData([]);
     toast({
       title: "Bulk Transfer Initiated",
-      description: `Sending ${bulkTransferData.length} transfers totaling ${getBulkTotalAmount().toFixed(2)} USDC`
+      description: `Sending ${bulkTransferData.length} transfers totaling ${formatExactAmount(getBulkTotalAmount())} USDC`
     });
   };
   console.log({bulkTransferData})
@@ -573,7 +578,7 @@ const handleBulkConfirm = async () => {
                               {row.recipient || <span className="text-muted-foreground italic">Empty</span>}
                             </td>
                             <td className={`p-3 text-right ${!row.amount || Number(row.amount) <= 0 ? "text-destructive" : "text-foreground"}`}>
-                              {row.amount ? (Number.isNaN(Number(row.amount)) ? row.amount : Number(row.amount).toFixed(2)) : "—"}
+                              {row.amount || "—"}
                             </td>
                             <td className={`p-3 text-right ${!["USDC", "EURC"].includes(row.currency.toUpperCase()) ? "text-destructive" : "text-foreground"}`}>
                               {row.currency}
@@ -610,7 +615,7 @@ const handleBulkConfirm = async () => {
                   <div className="flex items-center justify-between">
                     <span>Total Amount</span>
                     <span className="text-foreground font-medium">
-                      {getBulkTotalAmount().toFixed(6)} USDC
+                      {formatExactAmount(getBulkTotalAmount())} USDC
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -642,7 +647,7 @@ const handleBulkConfirm = async () => {
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-foreground">Grand Total</span>
                     <span className="text-foreground font-bold">
-                      {(getBulkTotalAmount() + getBulkTotalFees()).toFixed(6)} USDC
+                      {formatExactAmount(getBulkTotalAmount() + getBulkTotalFees())} USDC
                     </span>
                   </div>
                 </div>
@@ -712,7 +717,7 @@ const handleBulkConfirm = async () => {
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Total Amount</span>
-                    <span className="text-sm font-medium text-foreground">{getBulkTotalAmount().toFixed(6)} USDC</span>
+                    <span className="text-sm font-medium text-foreground">{formatExactAmount(getBulkTotalAmount())} USDC</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Gas Fee (bulk est.)</span>
@@ -730,7 +735,7 @@ const handleBulkConfirm = async () => {
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold text-foreground">Grand Total</span>
                     <span className="text-base font-bold text-foreground">
-                      {(getBulkTotalAmount() + getBulkTotalFees()).toFixed(6)} USDC
+                      {formatExactAmount(getBulkTotalAmount() + getBulkTotalFees())} USDC
                     </span>
                   </div>
                 </div>
