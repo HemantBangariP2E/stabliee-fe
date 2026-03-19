@@ -12,7 +12,7 @@ import { GasFeeDisplay } from "@/components/GasFeeDisplay";
 
 interface BulkTransferRow {
   recipient: string;
-  amount: number;
+  amount: string;
   currency?: string;
   fee?: number;
   errors?: string[];
@@ -226,10 +226,9 @@ const fetchEmailWalletMap = async (emails: string[]) => {
         h.includes("owneraddress") ||
         h === "owneraddress"
       );
-  
       const amountCol = headers.findIndex(h => h.includes("amount"));
       const currencyCol = headers.findIndex(h => h.includes("currency"));
-  
+
       if (recipientCol === -1 || amountCol === -1) {
         toast({
           title: "Invalid CSV Format",
@@ -238,23 +237,23 @@ const fetchEmailWalletMap = async (emails: string[]) => {
         });
         return;
       }
-  
+
       const rawData: BulkTransferRow[] = [];
       const emailsToCheck: string[] = [];
-  
+
       // 🔹 First pass: parse CSV
       for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(",").map(v => v.trim());
+        const values = lines[i].split(",").map(v => (v ?? "").toString().trim());
         if (values.length < 2) continue;
-  
-        const recipient = values[recipientCol] ?? "";
-        const amount = parseFloat(values[amountCol]);
+
+        const recipient = (values[recipientCol] ?? "").toString().trim() || "";
+        const amount = (values[amountCol] ?? "").toString().trim() || "";
         const currency = currencyCol !== -1
-          ? (values[currencyCol] || "USD").toUpperCase()
+          ? ((values[currencyCol] ?? "").toString().trim() || "USD").toUpperCase()
           : "USD";
-  
+
         const errors: string[] = [];
-  
+
         if (!recipient) {
           errors.push("Recipient is empty");
         } else if (recipient.startsWith("0x")) {
@@ -262,25 +261,24 @@ const fetchEmailWalletMap = async (emails: string[]) => {
             errors.push("Invalid wallet address format");
           }
         } else {
-          // email case → store for DB check
           if (!isValidEmail(recipient)) {
             errors.push("Invalid email format");
           } else {
             emailsToCheck.push(recipient.toLowerCase());
           }
         }
-  
-        if (isNaN(amount) || amount <= 0) {
+
+        if (!amount || amount.includes("e") || amount.includes("E") || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
           errors.push("Invalid amount");
         }
-  
+
         if (!["USD", "USDC", "EURC"].includes(currency)) {
           errors.push("Invalid currency (use USD, USDC or EURC)");
         }
-  
+
         rawData.push({
           recipient,
-          amount: isNaN(amount) ? 0 : amount,
+          amount: errors.some(e => e === "Invalid amount") ? "" : amount,
           currency,
           errors
         });
@@ -290,7 +288,9 @@ const fetchEmailWalletMap = async (emails: string[]) => {
       const emailWalletMap = await fetchEmailWalletMap(emailsToCheck);
   
    const data = rawData.map((row) => {
-  if (
+  if (row.recipient && row.recipient.startsWith("0x") && isValidWallet(row.recipient)) {
+    row.walletAddress = row.recipient;
+  } else if (
     row.recipient &&
     !row.recipient.startsWith("0x") &&
     isValidEmail(row.recipient)
@@ -298,17 +298,9 @@ const fetchEmailWalletMap = async (emails: string[]) => {
     const wallet = emailWalletMap[row.recipient.toLowerCase()];
 
     if (!wallet) {
-      row.errors.push("Email not found in system");
+      row.errors!.push("Email not found in system");
     } else {
-      console.log(
-        `Email ${row.recipient} → owner_address ${wallet}`
-      );
-
-      // 🔹 add wallet for blockchain use
       row.walletAddress = wallet;
-
-      // 🔹 keep original email for DB logging
-      // row.to_email = row.recipient;
     }
   }
 
@@ -340,8 +332,13 @@ const fetchEmailWalletMap = async (emails: string[]) => {
     }
   };
 
-  const getBulkTotalAmount = () => {
-    return bulkTransferData.reduce((sum, row) => sum + row.amount, 0);
+  const getBulkTotalAmount = (): number => {
+    return bulkTransferData.reduce((sum, row) => {
+      const amt = (row.amount ?? "").toString().trim();
+      if (!amt || amt.includes("e") || amt.includes("E")) return sum;
+      const n = Number(amt);
+      return sum + (Number.isNaN(n) || n <= 0 ? 0 : n);
+    }, 0);
   };
   const getBulkTotalFees = () => bulkTotalFeesUSD;
   const getErrorCount = () => {
@@ -390,10 +387,22 @@ const handleBulkConfirm = async () => {
 
     setBulkLoading(true);
 
-    const formattedRecipients = bulkTransferData.map((r) => ({
-      to: r.walletAddress,
-      amount: r.amount,
-    }));
+    const formattedRecipients = bulkTransferData.map((r) => {
+      const amountToSend = (r.amount ?? "").toString().trim();
+      if (!amountToSend) {
+        throw new Error(`Amount missing for recipient ${r.recipient || r.walletAddress}`);
+      }
+      if (amountToSend.includes("e") || amountToSend.includes("E")) {
+        throw new Error(`Invalid decimal format (no scientific notation) for ${r.recipient || r.walletAddress}`);
+      }
+      if (Number.isNaN(Number(amountToSend)) || Number(amountToSend) <= 0) {
+        throw new Error(`Invalid amount for ${r.recipient || r.walletAddress}`);
+      }
+      return {
+        to: r.walletAddress ?? "",
+        amount: amountToSend,
+      };
+    });
 
     // 🔗 Blockchain bulk call
     // const recipientWallet = "0xce938A9C74374b5B4863A9026c92D5Aa92b02332";
@@ -432,12 +441,12 @@ const handleBulkConfirm = async () => {
     setBulkTxUrl(url);
 
     // 🧾 Prepare DB rows (ONE PER RECIPIENT)
-    const dbRows = bulkTransferData.map((r) => ({
+    const dbRows = bulkTransferData.map((r, i) => ({
       tx_hash: txHash, // same hash for bulk
       owner_address: ownerAddress,
       from_address: ownerAddress,
       to_address: r.walletAddress,
-      amount: r.amount,
+      amount: formattedRecipients[i].amount,
       token_symbol: "USDC",
       direction: "SENT", // bulk send = debit
       status: "SUCCESS",
@@ -563,8 +572,8 @@ const handleBulkConfirm = async () => {
                             <td className={`p-3 truncate max-w-[200px] ${row.errors?.length > 0 ? "text-destructive" : "text-foreground"}`}>
                               {row.recipient || <span className="text-muted-foreground italic">Empty</span>}
                             </td>
-                            <td className={`p-3 text-right ${row.amount <= 0 ? "text-destructive" : "text-foreground"}`}>
-                              {row.amount.toFixed(2)}
+                            <td className={`p-3 text-right ${!row.amount || Number(row.amount) <= 0 ? "text-destructive" : "text-foreground"}`}>
+                              {row.amount ? (Number.isNaN(Number(row.amount)) ? row.amount : Number(row.amount).toFixed(2)) : "—"}
                             </td>
                             <td className={`p-3 text-right ${!["USDC", "EURC"].includes(row.currency.toUpperCase()) ? "text-destructive" : "text-foreground"}`}>
                               {row.currency}

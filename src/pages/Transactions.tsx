@@ -434,7 +434,9 @@ const insertTransaction = async ({
     }
 
     setLoading(true);
-    console.log("Amount typed (at send):", amount);
+    const amountToSendVal = parseFloat(amount);
+    console.log("TYPED:", { recipient: sendInputMode === "email" ? recipientEmail : recipientWallet, amount });
+    console.log("SENDING:", { recipientAddress, amount: amountToSendVal });
     // const amountInWei = parseUnits(amount, 18).toString();
     console.log("wallet type====:", localStorage.getItem('walletType'));
 
@@ -447,7 +449,6 @@ const insertTransaction = async ({
         }
 
         console.log("Sending transaction with params:", txParams);
-        console.log("Amount being sent (MetaMask):", amount);
 
         //@ts-ignore
         const hash = await window.exectueMetamaskTxn('NONPAYABLE',localStorage.getItem('nativeToken'),[
@@ -528,9 +529,7 @@ await supabase
           throw new Error('Embedded wallet is not ready. Refresh the page and try again, or sign in again from the login page.');
         }
     
-        console.log("[TX Amount] typed input:", amount);
-        const amountToSend = parseFloat(amount);
-        console.log("Amount being sent (MPC):", amountToSend);
+        const amountToSend = amount.trim(); 
     
         const hash = await executeMPCTxn(
   localStorage.getItem("ownerAddress"),
