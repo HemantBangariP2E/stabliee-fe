@@ -22,20 +22,20 @@ import Withdraw from "./pages/Withdraw";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
-const WIDGET_SCRIPT_SRC = "https://embedded-wallet.kalp.studio/my-widget.js";
+const WIDGET_SCRIPT_SRC = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
 
 const App = () => {
   const scriptLoaded = useRef(false);
 
 useEffect(() => {
   const existingScript = document.querySelector(
-    'script[src="https://embedded-wallet.kalp.studio/my-widget.js"]'
+    'script[src="https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js"]'
   );
 
   if (existingScript) return;
 
   const script = document.createElement("script");
-  script.src = "https://embedded-wallet.kalp.studio/my-widget.js";
+  script.src = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
   script.async = true;
 
   script.onload = () => {
@@ -43,7 +43,8 @@ useEffect(() => {
       // Initialize SDK with API key
       window.renderMyWidget(
         "kalp-wallet-container",
-        "d4d3f472f87499f50b6dfc537c00ca223d03f089b8afd4879c701cc5231a25a3",
+       
+        "cce4c35335c02307321678e3a8374bd2cf477a188850d253ace283690a827919",
         "/dashboard"
       );
     }

@@ -403,13 +403,13 @@ const handleBulkConfirm = async () => {
     const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
     const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
     const recipientWallet = isEthChainForFee
-      ? "0xe800228411744bA5958218dbD24881c6c373A65c"
-      : "0xFa4042a66b218Ab5E15D39dB7098aC4C57Cf89F2";
+      ? "0xaAEd3fCdDEDA26F9AD0582698d9Be012e48D88aF"
+      : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
     const tokenContractAddress = blockchainName === 'BASE'
-      ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+      ? '0x28bD35b56bfCa732C7DF2F2d08312169189605A8'
       : blockchainName === 'ETH'
-        ? '0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A'
-        : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+        ? '0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38'
+        : '0x28bD35b56bfCa732C7DF2F2d08312169189605A8';
     // @ts-ignore
     const hash = await window.exectueMPCBulkTokenTxn(
       ownerAddress,

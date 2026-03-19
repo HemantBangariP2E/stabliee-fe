@@ -32,7 +32,7 @@ const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
     if (chainId === "1") {
       return {
         rpcUrl: getEthMainnetRpcUrl(),
-        tokenAddress: "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A", // Ethereum mainnet token
+        tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // Ethereum mainnet token
       };
     }
     return {
@@ -48,7 +48,7 @@ const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
   }
   return {
     rpcUrl: "https://mainnet.base.org",
-    tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet token
+    tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8", // Base mainnet token
   };
 };
 

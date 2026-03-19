@@ -107,7 +107,7 @@ const Transactions = () => {
       if (chainId === "1") {
         return {
           rpcUrl: getEthMainnetRpcUrl(),
-          tokenAddress: "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A", // Ethereum mainnet token
+          tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // Ethereum mainnet token
         };
       }
       return {
@@ -124,7 +124,7 @@ const Transactions = () => {
     }
     return {
       rpcUrl: "https://mainnet.base.org",
-      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet token
+      tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8", // Base mainnet token
     };
   };
 
@@ -434,6 +434,7 @@ const insertTransaction = async ({
     }
 
     setLoading(true);
+    console.log("Amount typed (at send):", amount);
     // const amountInWei = parseUnits(amount, 18).toString();
     console.log("wallet type====:", localStorage.getItem('walletType'));
 
@@ -446,6 +447,7 @@ const insertTransaction = async ({
         }
 
         console.log("Sending transaction with params:", txParams);
+        console.log("Amount being sent (MetaMask):", amount);
 
         //@ts-ignore
         const hash = await window.exectueMetamaskTxn('NONPAYABLE',localStorage.getItem('nativeToken'),[
@@ -508,13 +510,14 @@ await supabase
         const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
         const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
         const feeRecipient = isEthChainForFee
-          ? "0xe800228411744bA5958218dbD24881c6c373A65c"
-          : "0xFa4042a66b218Ab5E15D39dB7098aC4C57Cf89F2";
+          ? "0xaAEd3fCdDEDA26F9AD0582698d9Be012e48D88aF"
+          : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
         const tokenContractAddress = blockchainName === 'BASE'
-          ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+          ? '0x28bD35b56bfCa732C7DF2F2d08312169189605A8'
           : blockchainName === 'ETH'
-            ? '0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A'
-            : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+            ? '0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38'
+            :"0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+            // : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
         const win = window as any;
         let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
         if (typeof executeMPCTxn !== 'function') {
@@ -524,10 +527,15 @@ await supabase
         if (typeof executeMPCTxn !== 'function') {
           throw new Error('Embedded wallet is not ready. Refresh the page and try again, or sign in again from the login page.');
         }
+    
+        console.log("[TX Amount] typed input:", amount);
+        const amountToSend = parseFloat(amount);
+        console.log("Amount being sent (MPC):", amountToSend);
+    
         const hash = await executeMPCTxn(
   localStorage.getItem("ownerAddress"),
   recipientAddress,
-  parseInt(amount),
+  amountToSend,
   parseInt(localStorage.getItem("chainIdConfig")),
   localStorage.getItem("networkName"),
   blockchainName,
@@ -793,7 +801,11 @@ await supabase
             <div className="mb-6">
               <Label className="text-sm font-medium text-foreground">Amount</Label>
               <div className="relative mt-2 flex">
-                <Input type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} className="h-12 rounded-xl rounded-r-none border-r-0 flex-1" />
+                <Input type="number" placeholder="0.00" value={amount} onChange={e => {
+                    const val = e.target.value;
+                    console.log("Amount typed:", val);
+                    setAmount(val);
+                  }} className="h-12 rounded-xl rounded-r-none border-r-0 flex-1" />
                 <div className="h-12 px-4 rounded-xl rounded-l-none border border-border bg-muted/50 flex items-center gap-2">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#2775CA" }}>
                     <span className="text-white text-[10px] font-bold">$</span>
