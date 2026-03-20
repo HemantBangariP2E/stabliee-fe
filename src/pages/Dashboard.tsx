@@ -434,7 +434,7 @@ console.log({usdcBalance,totalBalance})
                     </div>
                   </td>
                   <td className="text-right font-bold text-foreground text-base">
-                    {hideNumbers ? "••••••" : (usdcBalance ? usdcBalance : 0).toFixed(6)}
+                    {hideNumbers ? "••••••" : (usdcBalance ? usdcBalance : 0).toFixed(2)}
                   </td>
                   <td className="text-right font-bold text-foreground text-base">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</td>
                   
@@ -466,7 +466,7 @@ console.log({usdcBalance,totalBalance})
                 <div className="text-right">
                   <p className="text-lg font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</p>
                   <p className="text-xs text-muted-foreground">
-                    {hideNumbers ? "••••••" : `${(usdcBalance ? usdcBalance : 0).toFixed(6)} ${connectedTokenLabel}`}
+                    {hideNumbers ? "••••••" : `${(usdcBalance ? usdcBalance : 0).toFixed(2)} ${connectedTokenLabel}`}
                   </p>
                 </div>
               </div>
