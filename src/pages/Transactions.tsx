@@ -803,11 +803,14 @@ await supabase
             <div className="mb-6">
               <Label className="text-sm font-medium text-foreground">Amount</Label>
               <div className="relative mt-2 flex">
-                <Input type="number" placeholder="0.00" value={amount} onChange={e => {
-                    const val = e.target.value;
-                    console.log("Amount typed:", val);
-                    setAmount(val);
-                  }} className="no-spinner h-12 rounded-xl rounded-r-none border-r-0 flex-1" />
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="h-12 rounded-xl rounded-r-none border-r-0 flex-1"
+                />
                 <div className="h-12 px-4 rounded-xl rounded-l-none border border-border bg-muted/50 flex items-center gap-2">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#2775CA" }}>
                     <span className="text-white text-[10px] font-bold">$</span>
