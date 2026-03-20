@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 // import { parseUnits } from "ethers";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,7 @@ const mockBeneficiaries = [{
 }];
 const Transactions = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
    const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
   const emailFromUrl = searchParams.get("email") || "";
   const [recipientEmail, setRecipientEmail] = useState(emailFromUrl);
@@ -500,6 +501,7 @@ await supabase
         setUrl(chain === 'ETH'
           ? (isMainnet ? `https://etherscan.io/tx/${txHashForUrl}` : `https://sepolia.etherscan.io/tx/${txHashForUrl}`)
           : (isMainnet ? `https://basescan.org/tx/${txHashForUrl}` : `https://sepolia.basescan.org/tx/${txHashForUrl}`));
+        navigate("/activity");
       } catch (err) {
         console.log("Transaction error:", err);
         setError(getSendErrorMessage(err, recipientVerifiedByEmail))
@@ -591,8 +593,7 @@ await supabase
         setUrl(chain === 'ETH'
           ? (isMainnet ? `https://etherscan.io/tx/${hash.txHash}` : `https://sepolia.etherscan.io/tx/${hash.txHash}`)
           : (isMainnet ? `https://basescan.org/tx/${hash.txHash}` : `https://sepolia.basescan.org/tx/${hash.txHash}`));
-        // setRecipient('');
-        // setAmount('');
+        navigate("/activity");
       } catch (err) {
         console.log("Transaction error:", err);
         setError(getSendErrorMessage(err, recipientVerifiedByEmail))
@@ -806,7 +807,7 @@ await supabase
                     const val = e.target.value;
                     console.log("Amount typed:", val);
                     setAmount(val);
-                  }} className="h-12 rounded-xl rounded-r-none border-r-0 flex-1" />
+                  }} className="no-spinner h-12 rounded-xl rounded-r-none border-r-0 flex-1" />
                 <div className="h-12 px-4 rounded-xl rounded-l-none border border-border bg-muted/50 flex items-center gap-2">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#2775CA" }}>
                     <span className="text-white text-[10px] font-bold">$</span>
