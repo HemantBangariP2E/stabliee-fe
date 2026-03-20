@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Calendar, ChevronLeft, ChevronRight, ArrowUpDown, Copy, Send, Download, TrendingUp, TrendingDown, X, HelpCircle } from "lucide-react";
+import { Search, Calendar as CalendarIcon, ChevronLeft, ChevronRight, ArrowUpDown, Copy, Send, TrendingUp, TrendingDown, X, HelpCircle } from "lucide-react";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
 import { getAllTransactions } from "@/lib/alchemy";
@@ -39,6 +42,12 @@ const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
 function formatAddress(addr: string) {
   if (!addr || addr.length < 10) return addr;
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function formatDateUTC(dateStr: string | Date): string {
+  const d = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
+  if (isNaN(d.getTime())) return String(dateStr);
+  return d.toLocaleString("en-US", { timeZone: "UTC", dateStyle: "short", timeStyle: "medium" }) + " UTC";
 }
 
 function getExplorerUrl(txHash: string): string {
@@ -85,6 +94,8 @@ const TransactionHistory = () => {
   const [pageSize, setPageSize] = useState(10);
   const [filterType, setFilterType] = useState<"all" | "send" | "receive">("all");
   const [filterStatus, setFilterStatus] = useState<"all" | "success" | "failed" | "pending">("all");
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
   useEffect(() => {
@@ -156,7 +167,7 @@ const TransactionHistory = () => {
           id: index + 1,
           transactionId: tx.tx_hash,
           batchId: tx.batch_id || null,
-          date: new Date(tx.created_at).toLocaleString(),
+            date: formatDateUTC(tx.created_at),
           type: tx.direction === "SENT" ? "Send" : tx.direction === "RECEIVE" ? "Receive" : "Send",
           fromEmail,
           toEmail,
@@ -197,7 +208,7 @@ const TransactionHistory = () => {
           transactionId: t.hash,
           batchId: null,
           date: t.blockTimestamp
-            ? new Date(t.blockTimestamp).toLocaleString()
+            ? formatDateUTC(t.blockTimestamp)
             : `Block ${t.blockNum ? parseInt(t.blockNum, 16) : "?"}`,
           type: isSent ? "Send" : "Receive",
           fromEmail: resolveDisplay(t.from),
@@ -234,7 +245,7 @@ const TransactionHistory = () => {
       case "Send":
         return <Send className="w-5 h-5 text-primary" />;
       case "Receive":
-        return <Download className="w-5 h-5 text-success" />;
+        return <Send className="w-5 h-5 text-success rotate-180" />;
       case "Buy":
         return <TrendingUp className="w-5 h-5 text-success" />;
       case "Sell":
@@ -254,7 +265,13 @@ const TransactionHistory = () => {
   const formatAmountForList = (amount: string) => {
     const parts = amount.split(" ");
     const value = parseFloat(parts[0]);
-    return value.toFixed(3);
+    return Number.isFinite(value) ? value.toFixed(2) : "0.00";
+  };
+
+  const parseTxDate = (dateStr: string): Date | null => {
+    if (!dateStr || dateStr.startsWith("Block ")) return null;
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
   };
 
   const filteredTransactions = transactions.filter((tx) => {
@@ -279,7 +296,25 @@ const TransactionHistory = () => {
       (filterStatus === "failed" && tx.status === "Failed") ||
       (filterStatus === "pending" && tx.status === "Pending");
 
-    return matchesSearch && matchesType && matchesStatus;
+    let matchesDate = true;
+    if (startDate || endDate) {
+      const txDate = parseTxDate(tx.date);
+      if (txDate) {
+        const txDayStart = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate());
+        if (startDate) {
+          const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+          if (txDayStart < start) matchesDate = false;
+        }
+        if (endDate && matchesDate) {
+          const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59);
+          if (txDayStart > end) matchesDate = false;
+        }
+      } else {
+        matchesDate = false;
+      }
+    }
+
+    return matchesSearch && matchesType && matchesStatus && matchesDate;
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
@@ -302,7 +337,7 @@ const TransactionHistory = () => {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search email, batch ID, txn ID..."
+                placeholder="Search email, txn ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 w-full md:w-72 h-10 rounded-xl"
@@ -312,15 +347,53 @@ const TransactionHistory = () => {
             <div className="flex flex-wrap items-center gap-2 md:gap-3">
               <span className="text-sm text-muted-foreground hidden md:inline">Filter</span>
               <div className="hidden md:flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-9 rounded-lg gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Start date
-                </Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 rounded-lg gap-2">
+                      <CalendarIcon className="w-4 h-4" />
+                      {startDate ? format(startDate, "MMM d, yyyy") : "Start date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={setStartDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
                 <span className="text-muted-foreground">To</span>
-                <Button variant="outline" size="sm" className="h-9 rounded-lg gap-2">
-                  <Calendar className="w-4 h-4" />
-                  End Date
-                </Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 rounded-lg gap-2">
+                      <CalendarIcon className="w-4 h-4" />
+                      {endDate ? format(endDate, "MMM d, yyyy") : "End Date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={setEndDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {(startDate || endDate) && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      setStartDate(undefined);
+                      setEndDate(undefined);
+                    }}
+                    title="Clear date filter"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
               <Select
                 value={filterType}
@@ -332,7 +405,7 @@ const TransactionHistory = () => {
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="all">Type</SelectItem>
                   <SelectItem value="send">Send</SelectItem>
                   <SelectItem value="receive">Receive</SelectItem>
                 </SelectContent>
@@ -347,7 +420,7 @@ const TransactionHistory = () => {
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="all">Status</SelectItem>
                   <SelectItem value="success">Success</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
@@ -463,7 +536,7 @@ const TransactionHistory = () => {
                         <td className="py-3 px-4 text-sm">
                           <div className="flex items-center gap-2">
                             {tx.type === "Send" && <Send className="w-4 h-4 text-primary" />}
-                            {tx.type === "Receive" && <Download className="w-4 h-4 text-success" />}
+                            {tx.type === "Receive" && <Send className="w-4 h-4 text-success rotate-180" />}
                             {tx.type === "Buy" && <TrendingUp className="w-4 h-4 text-success" />}
                             {tx.type === "Sell" && <TrendingDown className="w-4 h-4 text-destructive" />}
                             <span>{tx.type}</span>
@@ -521,7 +594,7 @@ const TransactionHistory = () => {
                               <Send className="w-2.5 h-2.5 text-primary-foreground" />
                             )}
                             {tx.type === "Receive" && (
-                              <Download className="w-2.5 h-2.5 text-success-foreground" />
+                              <Send className="w-2.5 h-2.5 text-success-foreground rotate-180" />
                             )}
                             {tx.type === "Buy" && (
                               <TrendingUp className="w-2.5 h-2.5 text-success-foreground" />

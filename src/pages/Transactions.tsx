@@ -72,6 +72,7 @@ const Transactions = () => {
   });
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
+  const [amountError, setAmountError] = useState("");
   const [loading, setLoading] = useState(false);
   const [txStatus, setTxStatus] = useState<
     "idle" | "sending" | "retrying" | "success" | "failed"
@@ -808,8 +809,16 @@ await supabase
                   inputMode="decimal"
                   placeholder="0.00"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="h-12 rounded-xl rounded-r-none border-r-0 flex-1"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setAmount(val);
+                    if (val && !/^\d*\.?\d*$/.test(val)) {
+                      setAmountError("Put number");
+                    } else {
+                      setAmountError("");
+                    }
+                  }}
+                  className={`h-12 rounded-xl rounded-r-none border-r-0 flex-1 ${amountError ? "border-destructive" : ""}`}
                 />
                 <div className="h-12 px-4 rounded-xl rounded-l-none border border-border bg-muted/50 flex items-center gap-2">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#2775CA" }}>
@@ -818,9 +827,12 @@ await supabase
                   <span className="font-medium text-sm">{tokenLabel}</span>
                 </div>
               </div>
-              <button type="button" onClick={() => setAmount(availableBalance.toString())} className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer mt-2">
-                Available: {usdcBalance !== null ? usdcBalance.toFixed(6) : "0.000000"} {tokenLabel}
-              </button>
+              <div className="flex items-center justify-between mt-2">
+                <button type="button" onClick={() => { setAmount(availableBalance.toString()); setAmountError(""); }} className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer">
+                  Available: {usdcBalance !== null ? usdcBalance.toFixed(6) : "0.000000"} {tokenLabel}
+                </button>
+                {amountError && <p className="text-xs text-destructive">{amountError}</p>}
+              </div>
 
               {/* Live fee & total summary: Amount + Network Gas + Gas (1%) = Total */}
               <div className="mt-3 space-y-1 text-xs text-muted-foreground border border-border/60 rounded-xl px-3 py-2 bg-muted/30">
@@ -872,7 +884,7 @@ await supabase
   onClick={sendTransaction}
      disabled={
                 loading ||
-               
+                !!amountError ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
                 gasFeeUSD <= 0 ||

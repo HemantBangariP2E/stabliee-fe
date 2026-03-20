@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -92,6 +93,7 @@ function formatExactAmount(n: number): string {
 }
 
 const BulkSend = () => {
+  const navigate = useNavigate();
   const [bulkSendMode, setBulkSendMode] = useState<"email" | "wallet">("email");
   const [bulkTransferData, setBulkTransferData] = useState<BulkTransferRow[]>([]);
   const [showBulkPreview, setShowBulkPreview] = useState(false);
@@ -256,8 +258,8 @@ const fetchEmailWalletMap = async (emails: string[]) => {
         const recipient = (values[recipientCol] ?? "").toString().trim() || "";
         const amount = (values[amountCol] ?? "").toString().trim() || "";
         const currency = currencyCol !== -1
-          ? ((values[currencyCol] ?? "").toString().trim() || "USD").toUpperCase()
-          : "USD";
+          ? ((values[currencyCol] ?? "").toString().trim() || "USDC").toUpperCase()
+          : "USDC";
 
         const errors: string[] = [];
 
@@ -446,6 +448,7 @@ const handleBulkConfirm = async () => {
         ? (isMainnet ? `https://etherscan.io/tx/${txHash}` : `https://sepolia.etherscan.io/tx/${txHash}`)
         : (isMainnet ? `https://basescan.org/tx/${txHash}` : `https://sepolia.basescan.org/tx/${txHash}`);
     setBulkTxUrl(url);
+    navigate("/activity");
 
     // 🧾 Prepare DB rows (ONE PER RECIPIENT)
     const dbRows = bulkTransferData.map((r, i) => ({

@@ -24,6 +24,7 @@ const Profile = () => {
   const [language, setLanguage] = useState("en");
   const [country, setCountry] = useState("fr");
   const [displayName, setDisplayName] = useState("");
+  const [saving, setSaving] = useState(false);
   const lastSavedName = useRef("");
   const [showDisableConfirm, setShowDisableConfirm] = useState(false);
   const [pendingDisableIndex, setPendingDisableIndex] = useState<number | null>(null);
@@ -52,16 +53,21 @@ const Profile = () => {
       toast({ title: "Not signed in", variant: "destructive" });
       return;
     }
-    let q = supabase.from("user_logins").update({ name: trimmed });
-    if (userIdentifier) q = q.eq("user_identifier", userIdentifier);
-    else q = q.eq("owner_address", ownerAddress);
-    const { error } = await q;
-    if (error) {
-      toast({ title: "Failed to update name", description: error.message, variant: "destructive" });
-      return;
+    setSaving(true);
+    try {
+      let q = supabase.from("user_logins").update({ name: trimmed });
+      if (userIdentifier) q = q.eq("user_identifier", userIdentifier);
+      else q = q.eq("owner_address", ownerAddress);
+      const { error } = await q;
+      if (error) {
+        toast({ title: "Failed to update name", description: error.message, variant: "destructive" });
+        return;
+      }
+      lastSavedName.current = trimmed;
+      toast({ title: "Profile updated", description: "Your name has been saved." });
+    } finally {
+      setSaving(false);
     }
-    lastSavedName.current = trimmed;
-    toast({ title: "Profile updated", description: "Your name has been saved." });
   };
 
   // Mock wallet mappings (limited to 3) with discovery toggle
@@ -159,13 +165,21 @@ const Profile = () => {
             <div className="space-y-4 max-w-md">
               <div className="space-y-2">
                 <Label>Display Name</Label>
-                <Input
-                  placeholder="Enter your name"
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  onBlur={saveName}
-                  className="h-11 rounded-xl"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter your name"
+                    value={displayName}
+                    onChange={e => setDisplayName(e.target.value)}
+                    className="h-11 rounded-xl flex-1"
+                  />
+                  <Button
+                    onClick={saveName}
+                    disabled={saving}
+                    className="h-11 rounded-xl px-6"
+                  >
+                    {saving ? "Saving..." : "Save"}
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Email Address</Label>
