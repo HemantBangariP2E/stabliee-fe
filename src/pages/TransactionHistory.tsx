@@ -445,25 +445,24 @@ const TransactionHistory = () => {
             <>
               {/* Desktop Table */}
               <div className="hidden lg:block border border-border rounded-xl overflow-hidden">
-                <table className="w-full">
+                <table className="w-full table-fixed">
+                  <colgroup>
+                    <col className="w-[14.28%]" />
+                    <col className="w-[14.28%]" />
+                    <col className="w-[14.28%]" />
+                    <col className="w-[14.28%]" />
+                    <col className="w-[14.28%]" />
+                    <col className="w-[14.28%]" />
+                    <col className="w-[14.28%]" />
+                  </colgroup>
                   <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">From email</th>
+                    <tr className="border-b border-border bg-muted/30 h-12">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">From email</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">To email</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Amount</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">TX Hash</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Type</th>
-
-
-                        {/* <div className="flex items-center gap-1">
-                          USDC Transaction
-                          <ArrowUpDown className="w-3.5 h-3.5" /> */}
-                        {/* </div> */}
-                      {/* </th> */}
-                      
-                      {/* <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Gas</th> */}
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
-              
                       <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Date</th>
                       {/* <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th> */}
                     </tr>
@@ -473,9 +472,9 @@ const TransactionHistory = () => {
                       <tr
                         key={tx.id}
                         onClick={() => setSelectedTransaction(tx)}
-                        className="border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors cursor-pointer"
+                        className="border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors cursor-pointer h-14"
                       >
-                        <td className="py-3 px-4 text-sm">
+                        <td className="py-3 px-4 text-sm align-middle">
                           {tx.fromEmail !== "N/A" ? (
                             <div className="flex items-center gap-1.5">
                               <span className="truncate max-w-[140px]">{tx.fromEmail}</span>
@@ -490,7 +489,7 @@ const TransactionHistory = () => {
                             <span className="text-muted-foreground">N/A</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-sm">
+                        <td className="py-3 px-4 text-sm align-middle">
                           {tx.toEmail !== "N/A" ? (
                             <div className="flex items-center gap-1.5">
                               <span className="truncate max-w-[140px]">{tx.toEmail}</span>
@@ -505,8 +504,8 @@ const TransactionHistory = () => {
                             <span className="text-muted-foreground">N/A</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-sm">{formatAmountForList(tx.amount)} USDC</td>
-                        <td className="py-3 px-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                        <td className="py-3 px-4 text-sm align-middle">{formatAmountForList(tx.amount)} USDC</td>
+                        <td className="py-3 px-4 text-sm align-middle" onClick={(e) => e.stopPropagation()}>
                           {tx.transactionId ? (
                             <div className="flex items-center gap-1.5 font-mono">
                               <a
@@ -533,7 +532,7 @@ const TransactionHistory = () => {
                         </td>
 
     
-                        <td className="py-3 px-4 text-sm">
+                        <td className="py-3 px-4 text-sm align-middle">
                           <div className="flex items-center gap-2">
                             {tx.type === "Send" && <Send className="w-4 h-4 text-primary" />}
                             {tx.type === "Receive" && <Send className="w-4 h-4 text-success rotate-180" />}
@@ -546,7 +545,7 @@ const TransactionHistory = () => {
                         {/* <td className="py-3 px-4 text-sm">
                           {tx.gasFee !== "N/A" ? `${formatAmountForList(tx.gasFee)} USDC` : "N/A"}
                         </td> */}
-                        <td className="py-3 px-4 text-sm">
+                        <td className="py-3 px-4 text-sm align-middle">
                           <span
                             className={cn(
                               "font-medium",
@@ -557,7 +556,7 @@ const TransactionHistory = () => {
                             {tx.status}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-sm">{tx.date}</td>
+                        <td className="py-3 px-4 text-sm align-middle">{tx.date}</td>
 
                       </tr>
                     ))}
