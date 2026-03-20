@@ -14,6 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { supabase } from "@/hooks/supabaseClient";
 import { ethers } from "ethers";
 import { GasFeeDisplay } from "@/components/GasFeeDisplay";
+import { getConnectedNetworkDisplay } from "@/lib/utils";
 const mockBeneficiaries = [{
   id: 1,
   name: "TTT",
@@ -135,6 +136,7 @@ const Transactions = () => {
   };
   const tokenLabel = isEthChain() ? "USDT" : "USDC";
   const gasChain = isEthChain() ? "eth" : "base";
+  const connectedNetwork = getConnectedNetworkDisplay();
 
   const getTokenBalance = async (address: string): Promise<number> => {
     const { rpcUrl, tokenAddress } = getRpcUrlAndToken();
@@ -904,10 +906,15 @@ await supabase
               <p className="text-xs font-bold text-foreground mb-3">Important information</p>
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  • Payments are processed on <img src={baseLogo} alt="Base" className="w-4 h-4 rounded-full inline" />{" "}
-                  <span className="font-semibold text-foreground/70">Base</span> network
+                  • Payments are processed on{" "}
+                  {connectedNetwork.isBase ? (
+                    <><img src={baseLogo} alt="Base" className="w-4 h-4 rounded-full inline" />{" "}</>
+                  ) : (
+                    <span className="w-5 h-5 rounded-full bg-muted-foreground/20 inline-flex items-center justify-center text-[10px] font-bold">Ξ</span>
+                  )}{" "}
+                  <span className="font-semibold text-foreground/70">{connectedNetwork.name}</span> network
                 </p>
-                <p className="text-xs text-muted-foreground">• Base network conditions apply</p>
+                <p className="text-xs text-muted-foreground">• {connectedNetwork.name} network conditions apply</p>
               </div>
             </div>
 

@@ -8,7 +8,8 @@ import { Search, Calendar, ChevronLeft, ChevronRight, ArrowUpDown, Copy, Send, D
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
-import { AlchemyTotalsCard } from "@/components/AlchemyTotalsCard";
+import { getAllTransactions } from "@/lib/alchemy";
+import type { AlchemyNetwork } from "@/lib/alchemy";
 
 type Transaction = {
   id: number;
@@ -26,6 +27,55 @@ type Transaction = {
 
 
 
+const TOKEN_ADDRESSES: Record<string, string> = {
+  "11155111": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
+  "84532": "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
+};
+const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
+  "11155111": "eth-sepolia",
+  "84532": "base-sepolia",
+};
+
+function formatAddress(addr: string) {
+  if (!addr || addr.length < 10) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function getExplorerUrl(txHash: string): string {
+  const chainId = localStorage.getItem("chainIdConfig") || "";
+  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  const isMainnet = chainId === "1" || chainId === "8453";
+  if (blockchainName === "ETH") {
+    return isMainnet
+      ? `https://etherscan.io/tx/${txHash}`
+      : `https://sepolia.etherscan.io/tx/${txHash}`;
+  }
+  return isMainnet
+    ? `https://basescan.org/tx/${txHash}`
+    : `https://sepolia.basescan.org/tx/${txHash}`;
+}
+
+async function fetchEmailsForAddresses(addresses: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const unique = [...new Set(addresses.filter((a) => a && a.startsWith("0x")))];
+  if (unique.length === 0) return map;
+  const orFilter = unique.map((a) => `owner_address.ilike.${a}`).join(",");
+  const { data, error } = await supabase
+    .from("user_logins")
+    .select("user_identifier, owner_address")
+    .or(orFilter);
+  if (error) {
+    console.error("fetchEmailsForAddresses error:", error.message);
+    return map;
+  }
+  for (const row of data ?? []) {
+    if (row.owner_address && row.user_identifier) {
+      map.set(String(row.owner_address).toLowerCase(), row.user_identifier);
+    }
+  }
+  return map;
+}
+
 const TransactionHistory = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,63 +87,139 @@ const TransactionHistory = () => {
   const [filterStatus, setFilterStatus] = useState<"all" | "success" | "failed" | "pending">("all");
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
-
   useEffect(() => {
-  const fetchTransactions = async () => {
-    const ownerAddress = localStorage.getItem("ownerAddress")
+    const fetchTransactions = async () => {
+      const ownerAddress = localStorage.getItem("ownerAddress");
+      const chainId = localStorage.getItem("chainIdConfig") || "";
+      const tokenLabel = chainId === "11155111" || chainId === "1" ? "USDT" : "USDC";
+      const alchemyNetwork = CHAIN_TO_NETWORK[chainId];
+      const tokenAddress = TOKEN_ADDRESSES[chainId] ?? TOKEN_ADDRESSES["84532"];
 
-    if (!ownerAddress) return
+      if (!ownerAddress) return;
 
-    setLoading(true)
+      setLoading(true);
 
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("*")
-      .or(
-        `owner_address.eq.${ownerAddress},to_address.eq.${ownerAddress}`
-      )
-      .order("created_at", { ascending: false })
+      const supabasePromise = supabase
+        .from("transactions")
+        .select("*")
+        .or(`owner_address.eq.${ownerAddress},to_address.eq.${ownerAddress}`)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Fetch tx error:", error.message)
-      setLoading(false)
-      return
-    }
+      const alchemyPromise = alchemyNetwork
+        ? getAllTransactions(ownerAddress, tokenAddress, alchemyNetwork)
+        : Promise.resolve([]);
 
-    // 🔁 map DB → UI format
-    const mapped = data.map((tx: any, index: number): Transaction => ({
-      id: index + 1,
-      transactionId: tx.tx_hash,
-      batchId: tx.batch_id || null, // if you add later
-      date: new Date(tx.created_at).toLocaleString(),
-      type:
-        tx.direction === "SENT"
-          ? "Send"
-          : tx.direction === "RECEIVE"
-          ? "Receive"
-          : "Send",
-      fromEmail: tx.from_email || "N/A",
-      toEmail: tx.to_email || "N/A",
-      amount: `${Number(tx.amount).toFixed(8)} ${tx.token_symbol}`,
-      address: tx.to_address,
-      status:
-        tx.status === "SUCCESS"
-          ? "Success"
-          : tx.status === "FAILED"
-          ? "Failed"
-          : "Pending",
-      gasFee:
-        tx.gas_fee !== null
-          ? `${Number(tx.gas_fee).toFixed(8)} ${tx.token_symbol}`
-          : "N/A",
-    }))
+      const [supabaseResult, alchemyTransfers] = await Promise.all([
+        supabasePromise,
+        alchemyPromise,
+      ]);
 
-    setTransactions(mapped)
-    setLoading(false)
-  }
+      const { data: supabaseData, error } = supabaseResult;
 
-  fetchTransactions()
-}, [])
+      if (error) {
+        console.error("Fetch tx error:", error.message);
+      }
+
+      const supabaseAddresses: string[] = [];
+      for (const tx of supabaseData ?? []) {
+        if ((!tx.from_email || tx.from_email === "N/A") && tx.from_address) {
+          supabaseAddresses.push(tx.from_address);
+        }
+        if ((!tx.to_email || tx.to_email === "N/A") && tx.to_address) {
+          supabaseAddresses.push(tx.to_address);
+        }
+      }
+      const alchemyAddresses = [
+        ...new Set(alchemyTransfers.flatMap((t) => [t.from, t.to]).filter(Boolean)),
+      ];
+      const allAddresses = [...new Set([...supabaseAddresses, ...alchemyAddresses])];
+      const addressToEmail = await fetchEmailsForAddresses(allAddresses);
+
+      const resolveDisplay = (addr: string) =>
+        addressToEmail.get(addr?.toLowerCase()) ?? (addr ? formatAddress(addr) : "N/A");
+
+      const supabaseTxMap = new Map<string, Transaction>();
+      const mapped = (supabaseData ?? []).map((tx: any, index: number): Transaction => {
+        const fromEmail =
+          tx.from_email && tx.from_email !== "N/A"
+            ? tx.from_email
+            : tx.from_address
+              ? resolveDisplay(tx.from_address)
+              : "N/A";
+        const toEmail =
+          tx.to_email && tx.to_email !== "N/A"
+            ? tx.to_email
+            : tx.to_address
+              ? resolveDisplay(tx.to_address)
+              : "N/A";
+        const t: Transaction = {
+          id: index + 1,
+          transactionId: tx.tx_hash,
+          batchId: tx.batch_id || null,
+          date: new Date(tx.created_at).toLocaleString(),
+          type: tx.direction === "SENT" ? "Send" : tx.direction === "RECEIVE" ? "Receive" : "Send",
+          fromEmail,
+          toEmail,
+          amount: `${Number(tx.amount).toFixed(8)} ${tx.token_symbol}`,
+          address: tx.to_address,
+          status:
+            tx.status === "SUCCESS" ? "Success" : tx.status === "FAILED" ? "Failed" : "Pending",
+          gasFee:
+            tx.gas_fee !== null
+              ? `${Number(tx.gas_fee).toFixed(8)} ${tx.token_symbol}`
+              : "N/A",
+        };
+        supabaseTxMap.set(tx.tx_hash, t);
+        return t;
+      });
+
+      const seenHashes = new Set(supabaseTxMap.keys());
+      const sortTimeByHash = new Map<string, number>();
+      for (const d of supabaseData ?? []) {
+        sortTimeByHash.set(d.tx_hash, new Date(d.created_at).getTime());
+      }
+
+      let nextId = mapped.length + 1;
+      const ownerLower = ownerAddress.toLowerCase();
+      for (const t of alchemyTransfers) {
+        if (seenHashes.has(t.hash)) continue;
+        seenHashes.add(t.hash);
+        const isSent = t.from.toLowerCase() === ownerLower;
+        const otherAddr = isSent ? t.to : t.from;
+        const sortTime = t.blockTimestamp
+          ? new Date(t.blockTimestamp).getTime()
+          : t.blockNum
+            ? parseInt(t.blockNum, 16) * 12_000
+            : 0;
+        sortTimeByHash.set(t.hash, sortTime);
+        const alchemyTx: Transaction = {
+          id: nextId++,
+          transactionId: t.hash,
+          batchId: null,
+          date: t.blockTimestamp
+            ? new Date(t.blockTimestamp).toLocaleString()
+            : `Block ${t.blockNum ? parseInt(t.blockNum, 16) : "?"}`,
+          type: isSent ? "Send" : "Receive",
+          fromEmail: resolveDisplay(t.from),
+          toEmail: resolveDisplay(t.to),
+          amount: `${t.amount.toFixed(8)} ${tokenLabel}`,
+          address: otherAddr,
+          status: "Success",
+          gasFee: "N/A",
+        };
+        mapped.push(alchemyTx);
+      }
+
+      mapped.sort(
+        (a, b) => (sortTimeByHash.get(b.transactionId) ?? 0) - (sortTimeByHash.get(a.transactionId) ?? 0)
+      );
+
+      setTransactions(mapped);
+      setLoading(false);
+    };
+
+    fetchTransactions();
+  }, []);
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
@@ -139,6 +265,7 @@ const TransactionHistory = () => {
       tx.fromEmail.toLowerCase().includes(query) ||
       tx.toEmail.toLowerCase().includes(query) ||
       tx.transactionId.toLowerCase().includes(query) ||
+      tx.address?.toLowerCase().includes(query) ||
       (tx.batchId && tx.batchId.toLowerCase().includes(query));
 
     const matchesType =
@@ -306,12 +433,17 @@ const TransactionHistory = () => {
                           )}
                         </td>
                         <td className="py-3 px-4 text-sm">{formatAmountForList(tx.amount)} USDC</td>
-                        <td className="py-3 px-4 text-sm">
+                        <td className="py-3 px-4 text-sm" onClick={(e) => e.stopPropagation()}>
                           {tx.transactionId ? (
                             <div className="flex items-center gap-1.5 font-mono">
-                              <span>
-                                {`${tx.transactionId.slice(0, 4)}...${tx.transactionId.slice(-4)}`}
-                              </span>
+                              <a
+                                href={getExplorerUrl(tx.transactionId)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary hover:underline truncate max-w-[120px]"
+                              >
+                                {`${tx.transactionId.slice(0, 6)}...${tx.transactionId.slice(-4)}`}
+                              </a>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -406,6 +538,17 @@ const TransactionHistory = () => {
                           <p className="text-xs text-muted-foreground truncate max-w-[180px]">
                             To: {tx.toEmail !== "N/A" ? tx.toEmail : "-"}
                           </p>
+                          {tx.transactionId && (
+                            <a
+                              href={getExplorerUrl(tx.transactionId)}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs text-primary hover:underline mt-0.5 inline-block"
+                            >
+                              View on explorer
+                            </a>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">

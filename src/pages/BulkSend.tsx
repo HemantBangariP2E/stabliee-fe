@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Download, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import baseLogo from "@/assets/base-logo.png";
+import { getConnectedNetworkDisplay } from "@/lib/utils";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/hooks/supabaseClient";
@@ -102,6 +103,7 @@ const BulkSend = () => {
   const feePercent = 0.01; // 1% of bulk gas (USD)
   const [gasFeeBaseUSD, setGasFeeBaseUSD] = useState(0);
   const gasChain = getGasChain();
+  const connectedNetwork = getConnectedNetworkDisplay();
 
   const n = bulkTransferData.length;
   const bulkGasUSD =
@@ -689,10 +691,15 @@ const handleBulkConfirm = async () => {
               <p className="text-xs font-bold text-foreground mb-3">Important information</p>
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  • Payments are processed on <img src={baseLogo} alt="Base" className="w-4 h-4 rounded-full inline" />{" "}
-                  <span className="font-semibold text-foreground/70">Base</span> network
+                  • Payments are processed on{" "}
+                  {connectedNetwork.isBase ? (
+                    <><img src={baseLogo} alt="Base" className="w-4 h-4 rounded-full inline" />{" "}</>
+                  ) : (
+                    <span className="w-5 h-5 rounded-full bg-muted-foreground/20 inline-flex items-center justify-center text-[10px] font-bold">Ξ</span>
+                  )}{" "}
+                  <span className="font-semibold text-foreground/70">{connectedNetwork.name}</span> network
                 </p>
-                <p className="text-xs text-muted-foreground">• Base network conditions apply</p>
+                <p className="text-xs text-muted-foreground">• {connectedNetwork.name} network conditions apply</p>
               </div>
             </div>
 

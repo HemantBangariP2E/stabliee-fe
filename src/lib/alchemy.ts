@@ -10,6 +10,10 @@ export interface NormalizedTransfer {
   to: string;
   amount: number;
   hash: string;
+  /** Block number (hex string). Present when fetched with metadata. */
+  blockNum?: string;
+  /** ISO timestamp. Present when fetched with metadata. */
+  blockTimestamp?: string;
 }
 
 /** Totals from calculateTotals */
@@ -46,12 +50,16 @@ function getAlchemy(network: AlchemyNetwork): Alchemy {
   return alchemyInstances[network]!;
 }
 
-function normalizeTransfer(t: AssetTransfersResult): NormalizedTransfer {
+function normalizeTransfer(
+  t: AssetTransfersResult & { metadata?: { blockTimestamp?: string } }
+): NormalizedTransfer {
   return {
     from: t.from,
     to: t.to ?? "",
     amount: t.value ?? 0,
     hash: t.hash,
+    blockNum: t.blockNum,
+    blockTimestamp: t.metadata?.blockTimestamp,
   };
 }
 
@@ -73,6 +81,7 @@ async function fetchAllPages(
       excludeZeroValue: true,
       maxCount: 1000,
       pageKey,
+      withMetadata: true,
     });
 
     const normalized = response.transfers.map(normalizeTransfer);
