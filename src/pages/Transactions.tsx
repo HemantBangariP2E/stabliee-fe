@@ -834,7 +834,8 @@ await supabase
                 {amountError && <p className="text-xs text-destructive">{amountError}</p>}
               </div>
 
-              {/* Live fee & total summary: Amount + Network Gas + Gas (1%) = Total */}
+              {/* Live fee & total summary: Amount + Network Gas + Gas (1%) = Total - only when amount > 0 */}
+              {(parseFloat(amount || "0") || 0) > 0 && (
               <div className="mt-3 space-y-1 text-xs text-muted-foreground border border-border/60 rounded-xl px-3 py-2 bg-muted/30">
                 <div className="flex items-center justify-between">
                   <span>Amount</span>
@@ -875,6 +876,7 @@ await supabase
                   </span>
                 </div>
               </div>
+              )}
             </div>
 
             <div className="h-px bg-border my-6" />

@@ -281,8 +281,8 @@ const fetchEmailWalletMap = async (emails: string[]) => {
           errors.push("Invalid amount");
         }
 
-        if (!["USD", "USDC", "EURC"].includes(currency)) {
-          errors.push("Invalid currency (use USD, USDC or EURC)");
+        if (currency !== "USDC") {
+          errors.push("Invalid currency (only USDC is supported)");
         }
 
         rawData.push({
@@ -585,7 +585,7 @@ const handleBulkConfirm = async () => {
                             <td className={`p-3 text-right ${!row.amount || Number(row.amount) <= 0 ? "text-destructive" : "text-foreground"}`}>
                               {row.amount || "—"}
                             </td>
-                            <td className={`p-3 text-right ${!["USDC", "EURC"].includes(row.currency.toUpperCase()) ? "text-destructive" : "text-foreground"}`}>
+                            <td className={`p-3 text-right ${row.currency?.toUpperCase() !== "USDC" ? "text-destructive" : "text-foreground"}`}>
                               {row.currency}
                             </td>
                             {/* <td className="p-3 text-right text-muted-foreground">{row.fee.toFixed(2)}</td> */}
