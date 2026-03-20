@@ -13,6 +13,7 @@ import eurcLogo from "@/assets/eurc-logo.svg";
 import baseLogo from "@/assets/base-logo.png";
 import { useEffect } from "react";
 import { supabase } from "@/hooks/supabaseClient";
+import { useAlchemyTransactions } from "@/hooks/useAlchemyTransactions";
 import { ethers } from "ethers";
 
 const ERC20_ABI = [
@@ -147,6 +148,23 @@ const Dashboard = () => {
     typeof window !== "undefined"
       ? `${localStorage.getItem("chainIdConfig") ?? ""}_${localStorage.getItem("blockchainName") ?? ""}`
       : "";
+
+  const chainId = typeof window !== "undefined" ? localStorage.getItem("chainIdConfig") || "" : "";
+  const tokenAddress =
+    chainId === "11155111" || chainId === "1"
+      ? "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38"
+      : "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+  const alchemyNetwork =
+    chainId === "11155111" ? "eth-sepolia" : chainId === "84532" ? "base-sepolia" : undefined;
+
+  const { sent: alchemySent, received: alchemyReceived, loading: alchemyLoading } = useAlchemyTransactions(
+    ownerAddress,
+    tokenAddress,
+    { network: alchemyNetwork ?? "base-sepolia", enabled: !!ownerAddress && !!alchemyNetwork }
+  );
+
+  const displaySent = alchemyNetwork ? alchemySent : totalSent;
+  const displayReceived = alchemyNetwork ? alchemyReceived : totalReceived;
 
   useEffect(() => {
     if (!ownerAddress) return;
@@ -363,8 +381,8 @@ console.log({usdcBalance,totalBalance})
                 <span className="text-muted-foreground font-medium">Send</span>
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {hideNumbers ? "••••••" : `$${totalSent.toFixed(2)}`}
-                <span className="text-sm font-normal text-muted-foreground">Debited</span>
+                {hideNumbers ? "••••••" : alchemyLoading ? "..." : `$${displaySent.toFixed(2)}`}
+                <span className="ml-2 text-sm font-normal text-muted-foreground">Debited</span>
               </p>
             </Card>
           </Link>
@@ -378,8 +396,8 @@ console.log({usdcBalance,totalBalance})
                 <span className="text-muted-foreground font-medium">Receive</span>
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {hideNumbers ? "••••••" : `$${totalReceived.toFixed(2)}`}
-                <span className="text-sm font-normal text-muted-foreground">Credited</span>
+                {hideNumbers ? "••••••" : alchemyLoading ? "..." : `$${displayReceived.toFixed(2)}`}
+                <span className="ml-2 text-sm font-normal text-muted-foreground">Credited</span>
               </p>
             </Card>
           </div>

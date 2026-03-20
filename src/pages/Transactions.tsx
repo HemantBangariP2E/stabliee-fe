@@ -565,14 +565,14 @@ await insertTransaction({
 
 // await insertTransaction({
 //   txHash: hash.txHash,
-//   to: localStorage.getItem("ownerAddress") || "",
+//   to: recipientAddress,             // ✅ receiver
 //   amount: Number(amount),
 //   direction: "RECEIVE",
 //   status: "SUCCESS",
-//   gasFee: networkFee,
-//   ownerAddress: recipientWallet,
-//   fromAddress: recipientWallet,
-//     fromEmail: recipientEmail,
+//   gasFee: 0,                        // optional
+//   ownerAddress: recipientAddress,   // ✅ receiver
+//   fromAddress: account,             // ✅ sender
+//   fromEmail: localStorage.getItem("userIdentifier") || "",
 //   toEmail: recipientEmail
 // });
 

@@ -8,6 +8,7 @@ import { Search, Calendar, ChevronLeft, ChevronRight, ArrowUpDown, Copy, Send, D
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
+import { AlchemyTotalsCard } from "@/components/AlchemyTotalsCard";
 
 type Transaction = {
   id: number;
@@ -166,6 +167,9 @@ const TransactionHistory = () => {
       <div className="space-y-6 animate-fade-in">
 
         <Card className="p-4 md:p-6 rounded-2xl">
+          {/* <div className="mb-4">
+            <AlchemyTotalsCard />
+          </div> */}
           {/* Filters */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4">
             <div className="relative">
