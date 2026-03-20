@@ -265,7 +265,7 @@ const TransactionHistory = () => {
   const formatAmountForList = (amount: string) => {
     const parts = amount.split(" ");
     const value = parseFloat(parts[0]);
-    return Number.isFinite(value) ? value.toFixed(2) : "0.00";
+    return Number.isFinite(value) ? value.toFixed(6) : "0.000000";
   };
 
   const parseTxDate = (dateStr: string): Date | null => {
