@@ -2,7 +2,11 @@ import { Alchemy, Network, AssetTransfersCategory } from "alchemy-sdk";
 import type { AssetTransfersResult } from "alchemy-sdk";
 
 /** Supported networks for ERC20 transaction fetching */
-export type AlchemyNetwork = "eth-sepolia" | "base-sepolia";
+export type AlchemyNetwork =
+  | "eth-sepolia"
+  | "base-sepolia"
+  | "eth-mainnet"
+  | "base-mainnet";
 
 /** Normalized ERC20 transfer format */
 export interface NormalizedTransfer {
@@ -28,6 +32,8 @@ const API_KEY =
 const networkMap: Record<AlchemyNetwork, Network> = {
   "eth-sepolia": Network.ETH_SEPOLIA,
   "base-sepolia": Network.BASE_SEPOLIA,
+  "eth-mainnet": Network.ETH_MAINNET,
+  "base-mainnet": Network.BASE_MAINNET,
 };
 
 /** Cache for Alchemy instances per network */

@@ -13,8 +13,9 @@ const TOKEN_ADDRESSES: Record<string, string> = {
 const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "11155111": "eth-sepolia",
   "84532": "base-sepolia",
+  "1": "eth-mainnet",     // ✅ add this
+  "8453": "base-mainnet", // ✅ add this
 };
-
 /**
  * Example usage of useAlchemyTransactions.
  * Displays on-chain ERC20 sent/received totals from Alchemy.
