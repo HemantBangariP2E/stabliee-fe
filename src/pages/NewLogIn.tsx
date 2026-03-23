@@ -23,7 +23,7 @@ const Login = () => {
       window.renderMyWidget(
         "kalp-wallet-container",
        
-        "cce4c35335c02307321678e3a8374bd2cf477a188850d253ace283690a827919",
+        "d4d3f472f87499f50b6dfc537c00ca223d03f089b8afd4879c701cc5231a25a3",
         "/dashboard"
       );
     }

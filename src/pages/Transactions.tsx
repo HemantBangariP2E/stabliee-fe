@@ -122,12 +122,12 @@ const Transactions = () => {
     if (chainId === "84532") {
       return {
         rpcUrl: "https://sepolia.base.org",
-        tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3",
+        tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       };
     }
     return {
       rpcUrl: "https://mainnet.base.org",
-      tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3", // Base mainnet token
+      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet token
     };
   };
 
@@ -517,12 +517,12 @@ await supabase
         const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
         const feeRecipient = isEthChainForFee
           ? "0xaAEd3fCdDEDA26F9AD0582698d9Be012e48D88aF"
-          : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
+          : "0xF6b47Ce55818bC749910DB7591a3C3D660836e01";
         const tokenContractAddress = blockchainName === 'BASE'
-          ? '0xE9b0B7c1463916475A2278E04e4727FB4666EeD3'
+          ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
           : blockchainName === 'ETH'
             ? '0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A'
-            :"0xE9b0B7c1463916475A2278E04e4727FB4666EeD3";
+            :"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
             // : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
         const win = window as any;
         let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;

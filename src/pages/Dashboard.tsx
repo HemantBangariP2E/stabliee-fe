@@ -44,12 +44,12 @@ const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
   if (chainId === "84532") {
     return {
       rpcUrl: "https://sepolia.base.org",
-      tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3",
+      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     };
   }
   return {
     rpcUrl: "https://mainnet.base.org",
-    tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3", // Base mainnet token
+    tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet token
   };
 };
 
@@ -153,7 +153,7 @@ const Dashboard = () => {
   const tokenAddress =
     chainId === "11155111" || chainId === "1"
       ? "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A"
-      : "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3";
+      : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
   const alchemyNetwork =
     chainId === "11155111" ? "eth-sepolia" : chainId === "84532" ? "base-sepolia" : undefined;
 
