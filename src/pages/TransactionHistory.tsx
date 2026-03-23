@@ -31,8 +31,8 @@ type Transaction = {
 
 
 const TOKEN_ADDRESSES: Record<string, string> = {
-  "11155111": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
-  "84532": "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
+  "11155111": "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A",
+  "84532": "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3",
 };
 const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "11155111": "eth-sepolia",

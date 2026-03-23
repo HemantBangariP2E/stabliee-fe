@@ -45,7 +45,7 @@ useEffect(() => {
         "kalp-wallet-container",
        
         "cce4c35335c02307321678e3a8374bd2cf477a188850d253ace283690a827919",
-        "/dashboard"
+                "/dashboard"
       );
     }
   };

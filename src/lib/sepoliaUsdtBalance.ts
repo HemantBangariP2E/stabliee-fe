@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 
 const SEPOLIA_RPC = (import.meta.env.VITE_ETH_SEPOLIA_RPC as string) || "https://ethereum-sepolia-rpc.publicnode.com";
-const USDT_SEPOLIA_ADDRESS = "0x5aec77a2cbe8ee9d359f965826bddfa026dffb38";
+const USDT_SEPOLIA_ADDRESS = "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A";
 
 const ERC20_BALANCE_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
