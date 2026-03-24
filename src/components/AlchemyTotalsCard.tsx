@@ -6,8 +6,8 @@ import type { AlchemyNetwork } from "@/lib/alchemy";
 const TOKEN_ADDRESSES: Record<string, string> = {
   "11155111": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // ETH Sepolia USDT
   "1": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // ETH Mainnet
-  "84532": "0x28bD35b56bfCa732C7DF2F2d08312169189605A8", // Base Sepolia USDC
-  "8453": "0x28bD35b56bfCa732C7DF2F2d08312169189605A8", // Base Mainnet
+  "84532": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base Sepolia USDC
+  "8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base Mainnet
 };
 
 const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
