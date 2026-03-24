@@ -26,6 +26,26 @@ export interface TransferTotals {
   received: number;
 }
 
+/** MPC/platform fee legs (same tx hash as user send); exclude from UI and totals */
+const PLATFORM_FEE_TO_ADDRESSES_LOWER = new Set([
+  "0x3ef4bd3948976bd4af03003e5bc0e109e016d563", // Base family fee recipient
+  "0xaaed3fcddeda26f9ad0582698d9be012e48d88af", // Ethereum family fee recipient
+]);
+
+/** True when the transfer is the platform fee payment (not the main recipient transfer). */
+export function isPlatformFeeTransfer(transfer: { to: string }): boolean {
+  return PLATFORM_FEE_TO_ADDRESSES_LOWER.has(transfer.to.toLowerCase());
+}
+
+/** Base fee recipient — hide Supabase rows where this address is stored as owner_address. */
+const BASE_FEE_RECIPIENT_LOWER = "0x3ef4bd3948976bd4af03003e5bc0e109e016d563";
+
+/** True if this owner should not appear as the row owner in transaction history (fee wallet). */
+export function isPlatformFeeOwnerAddress(ownerAddress: string | null | undefined): boolean {
+  if (!ownerAddress) return false;
+  return ownerAddress.toLowerCase() === BASE_FEE_RECIPIENT_LOWER;
+}
+
 const API_KEY =
   import.meta.env.VITE_ALCHEMY_KEY || "e_gedLLWmPahJs32v18G-";
 
@@ -240,6 +260,8 @@ export function calculateTotals(
   let received = 0;
 
   for (const tx of transactions) {
+    if (isPlatformFeeTransfer(tx)) continue;
+
     const fromMatch = tx.from.toLowerCase() === addr;
     const toMatch = tx.to.toLowerCase() === addr;
 

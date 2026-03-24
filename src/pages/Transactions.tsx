@@ -331,13 +331,14 @@ const insertTransaction = async ({
 }) => {
   // const ownerAddress = localStorage.getItem("ownerAddress")
 
-  if (!ownerAddress) return
+  const ownerResolved = ownerAddress ?? localStorage.getItem("ownerAddress") ?? undefined;
+  if (!ownerResolved) return;
 
   const chainId = localStorage.getItem("chainIdConfig") || "";
   const { error } = await supabase.from("transactions").insert({
     tx_hash: txHash,
-    owner_address: ownerAddress,
-    from_address: ownerAddress,
+    owner_address: ownerResolved,
+    from_address: fromAddress ?? ownerResolved,
     to_address: to,
     amount: amount,
     token_symbol: selectedCurrency,
@@ -504,7 +505,7 @@ await supabase
         setUrl(chain === 'ETH'
           ? (isMainnet ? `https://etherscan.io/tx/${txHashForUrl}` : `https://sepolia.etherscan.io/tx/${txHashForUrl}`)
           : (isMainnet ? `https://basescan.org/tx/${txHashForUrl}` : `https://sepolia.basescan.org/tx/${txHashForUrl}`));
-        navigate("/activity");
+        navigate("/activity", { state: { fromSend: true } });
       } catch (err) {
         console.log("Transaction error:", err);
         setError(getSendErrorMessage(err, recipientVerifiedByEmail))
@@ -595,7 +596,7 @@ await supabase
         setUrl(chain === 'ETH'
           ? (isMainnet ? `https://etherscan.io/tx/${hash.txHash}` : `https://sepolia.etherscan.io/tx/${hash.txHash}`)
           : (isMainnet ? `https://basescan.org/tx/${hash.txHash}` : `https://sepolia.basescan.org/tx/${hash.txHash}`));
-        navigate("/activity");
+        navigate("/activity", { state: { fromSend: true } });
       } catch (err) {
         console.log("Transaction error:", err);
         setError(getSendErrorMessage(err, recipientVerifiedByEmail))

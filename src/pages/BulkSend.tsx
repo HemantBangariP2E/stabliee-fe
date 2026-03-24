@@ -448,7 +448,7 @@ const handleBulkConfirm = async () => {
         ? (isMainnet ? `https://etherscan.io/tx/${txHash}` : `https://sepolia.etherscan.io/tx/${txHash}`)
         : (isMainnet ? `https://basescan.org/tx/${txHash}` : `https://sepolia.basescan.org/tx/${txHash}`);
     setBulkTxUrl(url);
-    navigate("/activity");
+    navigate("/activity", { state: { fromSend: true } });
 
     // 🧾 Prepare DB rows (ONE PER RECIPIENT)
     const chainId = localStorage.getItem("chainIdConfig") || "";

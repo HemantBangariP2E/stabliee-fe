@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
-import { getAllTransactions, clearTransferCache } from "@/lib/alchemy";
+import {
+  getAllTransactions,
+  clearTransferCache,
+  isPlatformFeeTransfer,
+  isPlatformFeeOwnerAddress,
+} from "@/lib/alchemy";
 import type { AlchemyNetwork } from "@/lib/alchemy";
 
 type Transaction = {
@@ -42,6 +48,11 @@ const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "84532": "base-sepolia",
   "8453": "base-mainnet",
 };
+
+/** One on-chain tx can include many ERC20 transfers (bulk send); key by hash + recipient. */
+function transferDedupeKey(txHash: string, toAddress: string | undefined | null): string {
+  return `${txHash.toLowerCase()}:${String(toAddress ?? "").toLowerCase()}`;
+}
 
 function formatAddress(addr: string) {
   if (!addr || addr.length < 10) return addr;
@@ -90,6 +101,7 @@ async function fetchEmailsForAddresses(addresses: string[]): Promise<Map<string,
 }
 
 const TransactionHistory = () => {
+  const location = useLocation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -117,7 +129,7 @@ const TransactionHistory = () => {
   }, []);
 
   useEffect(() => {
-    const fetchTransactions = async () => {
+    const fetchTransactions = async (silent = false) => {
       const ownerAddress = localStorage.getItem("ownerAddress");
       const chainId = localStorage.getItem("chainIdConfig") || "";
       const tokenLabel = chainId === "11155111" || chainId === "1" ? "USDT" : "USDC";
@@ -126,7 +138,7 @@ const TransactionHistory = () => {
 
       if (!ownerAddress) return;
 
-      setLoading(true);
+      if (!silent) setLoading(true);
       clearTransferCache();
 
       const supabasePromise = supabase
@@ -154,8 +166,12 @@ const TransactionHistory = () => {
         console.error("Fetch tx error:", error.message);
       }
 
+      const supabaseRows = (supabaseData ?? []).filter(
+        (tx: { owner_address?: string }) => !isPlatformFeeOwnerAddress(tx.owner_address)
+      );
+
       const supabaseAddresses: string[] = [];
-      for (const tx of supabaseData ?? []) {
+      for (const tx of supabaseRows) {
         if ((!tx.from_email || tx.from_email === "N/A") && tx.from_address) {
           supabaseAddresses.push(tx.from_address);
         }
@@ -172,9 +188,8 @@ const TransactionHistory = () => {
       const resolveDisplay = (addr: string) =>
         addressToEmail.get(addr?.toLowerCase()) ?? (addr ? formatAddress(addr) : "N/A");
 
-      const supabaseTxMap = new Map<string, Transaction>();
       const ownerLower = ownerAddress.toLowerCase();
-      const mapped = (supabaseData ?? []).map((tx: any, index: number): Transaction => {
+      const mapped = supabaseRows.map((tx: any, index: number): Transaction => {
         const fromEmail =
           tx.from_email && tx.from_email !== "N/A"
             ? tx.from_email
@@ -207,20 +222,29 @@ const TransactionHistory = () => {
               ? `${Number(tx.gas_fee).toFixed(8)} ${tx.token_symbol}`
               : "N/A",
         };
-        supabaseTxMap.set(tx.tx_hash, t);
         return t;
       });
 
-      const seenHashes = new Set(supabaseTxMap.keys());
-      const sortTimeByHash = new Map<string, number>();
-      for (const d of supabaseData ?? []) {
-        sortTimeByHash.set(d.tx_hash, new Date(d.created_at).getTime());
+      const seenTransferKeys = new Set<string>();
+      for (const tx of supabaseRows) {
+        seenTransferKeys.add(transferDedupeKey(tx.tx_hash, tx.to_address));
       }
 
+      const sortTimeByKey = new Map<string, number>();
+      for (const d of supabaseRows) {
+        sortTimeByKey.set(
+          transferDedupeKey(d.tx_hash, d.to_address),
+          new Date(d.created_at).getTime()
+        );
+      }
+
+      const alchemyTransfersWithoutFeeLegs = alchemyTransfers.filter((t) => !isPlatformFeeTransfer(t));
+
       let nextId = mapped.length + 1;
-      for (const t of alchemyTransfers) {
-        if (seenHashes.has(t.hash)) continue;
-        seenHashes.add(t.hash);
+      for (const t of alchemyTransfersWithoutFeeLegs) {
+        const dedupeKey = transferDedupeKey(t.hash, t.to);
+        if (seenTransferKeys.has(dedupeKey)) continue;
+        seenTransferKeys.add(dedupeKey);
         const isSent = t.from.toLowerCase() === ownerLower;
         const otherAddr = isSent ? t.to : t.from;
         const sortTime = t.blockTimestamp
@@ -228,7 +252,7 @@ const TransactionHistory = () => {
           : t.blockNum
             ? parseInt(t.blockNum, 16) * 12_000
             : 0;
-        sortTimeByHash.set(t.hash, sortTime);
+        sortTimeByKey.set(dedupeKey, sortTime);
         const alchemyTx: Transaction = {
           id: nextId++,
           transactionId: t.hash,
@@ -247,8 +271,11 @@ const TransactionHistory = () => {
         mapped.push(alchemyTx);
       }
 
+      const sortKey = (row: Transaction) =>
+        transferDedupeKey(row.transactionId, row.address);
+
       mapped.sort(
-        (a, b) => (sortTimeByHash.get(b.transactionId) ?? 0) - (sortTimeByHash.get(a.transactionId) ?? 0)
+        (a, b) => (sortTimeByKey.get(sortKey(b)) ?? 0) - (sortTimeByKey.get(sortKey(a)) ?? 0)
       );
 
       setTransactions(mapped);
@@ -256,7 +283,18 @@ const TransactionHistory = () => {
     };
 
     fetchTransactions();
-  }, [chainKey]);
+
+    const fromSend = Boolean((location.state as { fromSend?: boolean } | null)?.fromSend);
+    const retryIds: ReturnType<typeof setTimeout>[] = [];
+    if (fromSend) {
+      retryIds.push(setTimeout(() => void fetchTransactions(true), 1500));
+      retryIds.push(setTimeout(() => void fetchTransactions(true), 4000));
+    }
+
+    return () => {
+      retryIds.forEach(clearTimeout);
+    };
+  }, [chainKey, location.key]);
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
