@@ -127,7 +127,7 @@ const Transactions = () => {
     }
     return {
       rpcUrl: "https://mainnet.base.org",
-      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet token
+      tokenAddress: "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3", // Base mainnet
     };
   };
 
@@ -521,10 +521,10 @@ await supabase
           ? "0xaAEd3fCdDEDA26F9AD0582698d9Be012e48D88aF"
           : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
         const tokenContractAddress = blockchainName === 'BASE'
-          ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+          ? (feeChainId === "8453" ? "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3" : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
           : blockchainName === 'ETH'
             ? (feeChainId === "1" ? "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A" : "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38")
-            : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+            : (feeChainId === "8453" ? "0xE9b0B7c1463916475A2278E04e4727FB4666EeD3" : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
         const win = window as any;
         let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
         if (typeof executeMPCTxn !== 'function') {
