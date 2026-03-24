@@ -150,17 +150,22 @@ const Dashboard = () => {
       : "";
 
   const chainId = typeof window !== "undefined" ? localStorage.getItem("chainIdConfig") || "" : "";
-  const tokenAddress =
-    chainId === "11155111" || chainId === "1"
-      ? "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A"
-      : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const { tokenAddress } = getRpcUrlAndToken();
   const alchemyNetwork =
-    chainId === "11155111" ? "eth-sepolia" : chainId === "84532" ? "base-sepolia" : undefined;
+    chainId === "11155111"
+      ? "eth-sepolia"
+      : chainId === "84532"
+        ? "base-sepolia"
+        : chainId === "1"
+          ? "eth-mainnet"
+          : chainId === "8453"
+            ? "base-mainnet"
+            : undefined;
 
   const { sent: alchemySent, received: alchemyReceived, loading: alchemyLoading } = useAlchemyTransactions(
     ownerAddress,
     tokenAddress,
-    { network: alchemyNetwork ?? "base-sepolia", enabled: !!ownerAddress && !!alchemyNetwork }
+    { network: alchemyNetwork ?? "base-sepolia", enabled: !!ownerAddress && !!alchemyNetwork && !!tokenAddress }
   );
 
   const displaySent = alchemyNetwork ? alchemySent : totalSent;
