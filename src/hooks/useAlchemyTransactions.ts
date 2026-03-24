@@ -10,6 +10,8 @@ export interface UseAlchemyTransactionsOptions {
   network?: AlchemyNetwork;
   /** If true, skips fetching. Useful when address/token not ready. */
   enabled?: boolean;
+  /** When this changes, forces a refetch (e.g. after chain change). */
+  refreshKey?: unknown;
 }
 
 export interface UseAlchemyTransactionsResult {
@@ -28,7 +30,7 @@ export function useAlchemyTransactions(
   tokenAddress: string | null | undefined,
   options: UseAlchemyTransactionsOptions = {}
 ): UseAlchemyTransactionsResult {
-  const { network = "base-sepolia", enabled = true } = options;
+  const { network = "base-sepolia", enabled = true, refreshKey } = options;
 
   const [sent, setSent] = useState(0);
   const [received, setReceived] = useState(0);
@@ -84,7 +86,7 @@ export function useAlchemyTransactions(
       abortRef.current = true;
       lastFetchRef.current = "";
     };
-  }, [address, tokenAddress, network, enabled]);
+  }, [address, tokenAddress, network, enabled, refreshKey]);
 
   return { sent, received, loading, error };
 }

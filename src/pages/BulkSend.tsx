@@ -426,7 +426,7 @@ const handleBulkConfirm = async () => {
     const tokenContractAddress = blockchainName === 'BASE'
       ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
       : blockchainName === 'ETH'
-        ? '0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38'
+        ? (feeChainId === "1" ? "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A" : "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38")
         : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
     // @ts-ignore
     const hash = await window.exectueMPCBulkTokenTxn(
@@ -451,6 +451,7 @@ const handleBulkConfirm = async () => {
     navigate("/activity");
 
     // 🧾 Prepare DB rows (ONE PER RECIPIENT)
+    const chainId = localStorage.getItem("chainIdConfig") || "";
     const dbRows = bulkTransferData.map((r, i) => ({
       tx_hash: txHash, // same hash for bulk
       owner_address: ownerAddress,
@@ -463,6 +464,7 @@ const handleBulkConfirm = async () => {
       gas_fee: fee,
       from_email: localStorage.getItem("userIdentifier") || "",
       to_email: r.recipient,
+      chain_id: chainId,
     }));
 
     // 💾 Insert all rows in Supabase

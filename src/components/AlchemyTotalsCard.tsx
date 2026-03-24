@@ -5,14 +5,16 @@ import type { AlchemyNetwork } from "@/lib/alchemy";
 /** Token addresses per network (matches Transactions.tsx) */
 const TOKEN_ADDRESSES: Record<string, string> = {
   "11155111": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // ETH Sepolia USDT
-  "1": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // ETH Mainnet
+  "1": "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A", // ETH Mainnet
   "84532": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base Sepolia USDC
   "8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base Mainnet
 };
 
 const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "11155111": "eth-sepolia",
+  "1": "eth-mainnet",
   "84532": "base-sepolia",
+  "8453": "base-mainnet",
 };
 
 /**

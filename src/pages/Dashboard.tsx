@@ -14,7 +14,22 @@ import baseLogo from "@/assets/base-logo.png";
 import { useEffect } from "react";
 import { supabase } from "@/hooks/supabaseClient";
 import { useAlchemyTransactions } from "@/hooks/useAlchemyTransactions";
+import type { AlchemyNetwork } from "@/lib/alchemy";
+import { clearTransferCache } from "@/lib/alchemy";
 import { ethers } from "ethers";
+
+const TOKEN_ADDRESSES: Record<string, string> = {
+  "11155111": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
+  "1": "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A",
+  "84532": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+};
+const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
+  "11155111": "eth-sepolia",
+  "1": "eth-mainnet",
+  "84532": "base-sepolia",
+  "8453": "base-mainnet",
+};
 
 const ERC20_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
@@ -29,27 +44,16 @@ const getEthMainnetRpcUrl = (): string =>
 const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
   const chainId = localStorage.getItem("chainIdConfig") || "";
   const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  const tokenAddress = TOKEN_ADDRESSES[chainId] ?? TOKEN_ADDRESSES["84532"];
   if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
-    if (chainId === "1") {
-      return {
-        rpcUrl: getEthMainnetRpcUrl(),
-        tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // Ethereum mainnet token
-      };
-    }
     return {
-      rpcUrl: getEthSepoliaRpcUrl(),
-      tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // USDT Sepolia
-    };
-  }
-  if (chainId === "84532") {
-    return {
-      rpcUrl: "https://sepolia.base.org",
-      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      rpcUrl: chainId === "1" ? getEthMainnetRpcUrl() : getEthSepoliaRpcUrl(),
+      tokenAddress,
     };
   }
   return {
-    rpcUrl: "https://mainnet.base.org",
-    tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base mainnet token
+    rpcUrl: chainId === "84532" ? "https://sepolia.base.org" : "https://mainnet.base.org",
+    tokenAddress,
   };
 };
 
@@ -123,10 +127,8 @@ const Dashboard = () => {
   const connectedTokenLabel = getConnectedTokenLabel();
   const connectedNetwork = getConnectedNetworkDisplay();
 
-  const [totalSent, setTotalSent] = useState(0);
-  const [totalReceived, setTotalReceived] = useState(0);
-  const [totalBalance, setTotalBalance] = useState(0);
   const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [networkVersion, setNetworkVersion] = useState(0);
 
   const userName = location.state?.name || "User";
   const [hideNumbers, setHideNumbers] = useState(false);
@@ -144,27 +146,34 @@ const Dashboard = () => {
     }
   }, [ownerAddress, navigate]);
 
+  useEffect(() => {
+    clearTransferCache();
+  }, []);
+
+  useEffect(() => {
+    const ethereum = (window as { ethereum?: { on?: (e: string, h: () => void) => void; removeListener?: (e: string, h: () => void) => void } }).ethereum;
+    const onChainChanged = () => setNetworkVersion((v) => v + 1);
+    ethereum?.on?.("chainChanged", onChainChanged);
+    return () => ethereum?.removeListener?.("chainChanged", onChainChanged);
+  }, []);
+
   const chainKey =
     typeof window !== "undefined"
-      ? `${localStorage.getItem("chainIdConfig") ?? ""}_${localStorage.getItem("blockchainName") ?? ""}`
+      ? `${localStorage.getItem("chainIdConfig") ?? ""}_${localStorage.getItem("blockchainName") ?? ""}_${networkVersion}`
       : "";
 
   const chainId = typeof window !== "undefined" ? localStorage.getItem("chainIdConfig") || "" : "";
-  const tokenAddress =
-    chainId === "11155111" || chainId === "1"
-      ? "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38"
-      : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-  const alchemyNetwork =
-    chainId === "11155111" ? "eth-sepolia" : chainId === "84532" ? "base-sepolia" : undefined;
+  const tokenAddress = TOKEN_ADDRESSES[chainId] ?? TOKEN_ADDRESSES["84532"];
+  const alchemyNetwork = CHAIN_TO_NETWORK[chainId];
 
   const { sent: alchemySent, received: alchemyReceived, loading: alchemyLoading } = useAlchemyTransactions(
     ownerAddress,
     tokenAddress,
-    { network: alchemyNetwork ?? "base-sepolia", enabled: !!ownerAddress && !!alchemyNetwork }
+    { network: alchemyNetwork ?? "base-sepolia", enabled: !!ownerAddress && !!alchemyNetwork, refreshKey: networkVersion }
   );
 
-  const displaySent = alchemyNetwork ? alchemySent : totalSent;
-  const displayReceived = alchemyNetwork ? alchemyReceived : totalReceived;
+  const displaySent = alchemyNetwork ? alchemySent : 0;
+  const displayReceived = alchemyNetwork ? alchemyReceived : 0;
 
   useEffect(() => {
     if (!ownerAddress) return;
@@ -280,31 +289,7 @@ const Dashboard = () => {
   saveUser();
 }, [userIdentifier, ownerAddress]);
 
-  useEffect(() => {
-  if (!ownerAddress) return
 
-  const fetchTotals = async () => {
-    const { data, error } = await supabase
-      .from("wallet_summary")
-      .select("*")
-      .eq("owner_address", ownerAddress)
-      .single()
-
-    if (error) {
-      console.error("Error fetching wallet summary:", error.message)
-      return
-    }
-
-    if (data) {
-      setTotalSent(Number(data.total_sent || 0))
-      setTotalReceived(Number(data.total_received || 0))
-      setTotalBalance(Number(data.balance || 0))
-    }
-  }
-
-  fetchTotals()
-}, [ownerAddress])
-console.log({usdcBalance,totalBalance})
   return <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
         {/* Stats Grid */}

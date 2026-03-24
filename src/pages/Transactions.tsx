@@ -110,7 +110,7 @@ const Transactions = () => {
       if (chainId === "1") {
         return {
           rpcUrl: getEthMainnetRpcUrl(),
-          tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // Ethereum mainnet token
+          tokenAddress: "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A", // Ethereum mainnet token
         };
       }
       return {
@@ -333,6 +333,7 @@ const insertTransaction = async ({
 
   if (!ownerAddress) return
 
+  const chainId = localStorage.getItem("chainIdConfig") || "";
   const { error } = await supabase.from("transactions").insert({
     tx_hash: txHash,
     owner_address: ownerAddress,
@@ -344,7 +345,8 @@ const insertTransaction = async ({
     status,
     gas_fee: gasFee,
     from_email: localStorage.getItem("userIdentifier") || "",
-    to_email: recipientEmail
+    to_email: recipientEmail,
+    chain_id: chainId,
   })
 
   if (error) {
@@ -521,9 +523,8 @@ await supabase
         const tokenContractAddress = blockchainName === 'BASE'
           ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
           : blockchainName === 'ETH'
-            ? '0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38'
-            :"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-            // : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+            ? (feeChainId === "1" ? "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A" : "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38")
+            : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
         const win = window as any;
         let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
         if (typeof executeMPCTxn !== 'function') {

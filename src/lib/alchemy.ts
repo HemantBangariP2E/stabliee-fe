@@ -1,8 +1,12 @@
-import { Alchemy, Network, AssetTransfersCategory } from "alchemy-sdk";
+import { Alchemy, Network, AssetTransfersCategory, SortingOrder } from "alchemy-sdk";
 import type { AssetTransfersResult } from "alchemy-sdk";
 
 /** Supported networks for ERC20 transaction fetching */
-export type AlchemyNetwork = "eth-sepolia" | "base-sepolia";
+export type AlchemyNetwork =
+  | "eth-sepolia"
+  | "base-sepolia"
+  | "eth-mainnet"
+  | "base-mainnet";
 
 /** Normalized ERC20 transfer format */
 export interface NormalizedTransfer {
@@ -28,6 +32,8 @@ const API_KEY =
 const networkMap: Record<AlchemyNetwork, Network> = {
   "eth-sepolia": Network.ETH_SEPOLIA,
   "base-sepolia": Network.BASE_SEPOLIA,
+  "eth-mainnet": Network.ETH_MAINNET,
+  "base-mainnet": Network.BASE_MAINNET,
 };
 
 /** Cache for Alchemy instances per network */
@@ -36,6 +42,11 @@ const alchemyInstances: Partial<Record<AlchemyNetwork, Alchemy>> = {};
 /** Simple in-memory cache for debugging (optional) */
 const transferCache = new Map<string, { data: NormalizedTransfer[]; ts: number }>();
 const CACHE_TTL_MS = 60_000; // 1 minute
+
+/** Clear transfer cache (e.g. when user wants fresh data on Activity page) */
+export function clearTransferCache(): void {
+  transferCache.clear();
+}
 
 function getAlchemy(network: AlchemyNetwork): Alchemy {
   if (!alchemyInstances[network]) {
@@ -50,13 +61,32 @@ function getAlchemy(network: AlchemyNetwork): Alchemy {
   return alchemyInstances[network]!;
 }
 
+function parseAmount(
+  t: AssetTransfersResult & { metadata?: { blockTimestamp?: string } }
+): number {
+  const val = t.value;
+  const numVal = typeof val === "string" ? parseFloat(val) : val;
+  if (numVal != null && Number.isFinite(numVal)) return numVal;
+  const raw = (t as { rawContract?: { rawValue?: string; decimals?: string | number } }).rawContract;
+  if (raw?.rawValue != null) {
+    let decimals = 6;
+    if (raw.decimals != null) {
+      const d = raw.decimals;
+      decimals = typeof d === "number" ? d : parseInt(String(d), String(d).startsWith("0x") ? 16 : 10) || 6;
+    }
+    const rawNum = Number(BigInt(raw.rawValue));
+    return rawNum / Math.pow(10, decimals);
+  }
+  return 0;
+}
+
 function normalizeTransfer(
   t: AssetTransfersResult & { metadata?: { blockTimestamp?: string } }
 ): NormalizedTransfer {
   return {
     from: t.from,
     to: t.to ?? "",
-    amount: t.value ?? 0,
+    amount: parseAmount(t),
     hash: t.hash,
     blockNum: t.blockNum,
     blockTimestamp: t.metadata?.blockTimestamp,
@@ -82,6 +112,9 @@ async function fetchAllPages(
       maxCount: 1000,
       pageKey,
       withMetadata: true,
+      fromBlock: "0x0",
+      toBlock: "latest",
+      order: SortingOrder.DESCENDING,
     });
 
     const normalized = response.transfers.map(normalizeTransfer);

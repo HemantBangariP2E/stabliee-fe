@@ -11,7 +11,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
-import { getAllTransactions } from "@/lib/alchemy";
+import { getAllTransactions, clearTransferCache } from "@/lib/alchemy";
 import type { AlchemyNetwork } from "@/lib/alchemy";
 
 type Transaction = {
@@ -32,11 +32,15 @@ type Transaction = {
 
 const TOKEN_ADDRESSES: Record<string, string> = {
   "11155111": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
+  "1": "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A",
   "84532": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 };
 const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "11155111": "eth-sepolia",
+  "1": "eth-mainnet",
   "84532": "base-sepolia",
+  "8453": "base-mainnet",
 };
 
 function formatAddress(addr: string) {
@@ -97,6 +101,20 @@ const TransactionHistory = () => {
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [networkVersion, setNetworkVersion] = useState(0);
+  const chainKey =
+    typeof window !== "undefined"
+      ? `${localStorage.getItem("chainIdConfig") ?? ""}_${localStorage.getItem("blockchainName") ?? ""}_${networkVersion}`
+      : "";
+
+  useEffect(() => {
+    const ethereum = (window as { ethereum?: { on?: (e: string, h: () => void) => void; removeListener?: (e: string, h: () => void) => void } }).ethereum;
+    const onChainChanged = () => setNetworkVersion((v) => v + 1);
+    ethereum?.on?.("chainChanged", onChainChanged);
+    return () => {
+      ethereum?.removeListener?.("chainChanged", onChainChanged);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -109,15 +127,20 @@ const TransactionHistory = () => {
       if (!ownerAddress) return;
 
       setLoading(true);
+      clearTransferCache();
 
       const supabasePromise = supabase
         .from("transactions")
         .select("*")
-        .or(`owner_address.eq.${ownerAddress},to_address.eq.${ownerAddress}`)
+        .or(`owner_address.ilike.${ownerAddress},to_address.ilike.${ownerAddress}`)
+        .eq("chain_id", chainId)
         .order("created_at", { ascending: false });
 
       const alchemyPromise = alchemyNetwork
-        ? getAllTransactions(ownerAddress, tokenAddress, alchemyNetwork)
+        ? getAllTransactions(ownerAddress, tokenAddress, alchemyNetwork).catch((err) => {
+            console.error("[TransactionHistory] Alchemy fetch error:", err);
+            return [];
+          })
         : Promise.resolve([]);
 
       const [supabaseResult, alchemyTransfers] = await Promise.all([
@@ -150,6 +173,7 @@ const TransactionHistory = () => {
         addressToEmail.get(addr?.toLowerCase()) ?? (addr ? formatAddress(addr) : "N/A");
 
       const supabaseTxMap = new Map<string, Transaction>();
+      const ownerLower = ownerAddress.toLowerCase();
       const mapped = (supabaseData ?? []).map((tx: any, index: number): Transaction => {
         const fromEmail =
           tx.from_email && tx.from_email !== "N/A"
@@ -163,12 +187,15 @@ const TransactionHistory = () => {
             : tx.to_address
               ? resolveDisplay(tx.to_address)
               : "N/A";
+        const isUserSender = String(tx.owner_address || "").toLowerCase() === ownerLower;
+        const dbDirection = tx.direction === "SENT" ? "Send" : tx.direction === "RECEIVE" ? "Receive" : "Send";
+        const type = isUserSender ? dbDirection : dbDirection === "Send" ? "Receive" : "Send";
         const t: Transaction = {
           id: index + 1,
           transactionId: tx.tx_hash,
           batchId: tx.batch_id || null,
             date: formatDateUTC(tx.created_at),
-          type: tx.direction === "SENT" ? "Send" : tx.direction === "RECEIVE" ? "Receive" : "Send",
+          type,
           fromEmail,
           toEmail,
           amount: `${Number(tx.amount).toFixed(8)} ${tx.token_symbol}`,
@@ -191,7 +218,6 @@ const TransactionHistory = () => {
       }
 
       let nextId = mapped.length + 1;
-      const ownerLower = ownerAddress.toLowerCase();
       for (const t of alchemyTransfers) {
         if (seenHashes.has(t.hash)) continue;
         seenHashes.add(t.hash);
@@ -230,7 +256,7 @@ const TransactionHistory = () => {
     };
 
     fetchTransactions();
-  }, []);
+  }, [chainKey]);
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
