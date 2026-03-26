@@ -17,6 +17,7 @@ import {
   clearTransferCache,
   isPlatformFeeTransfer,
   isPlatformFeeOwnerAddress,
+  transferDedupeKey,
 } from "@/lib/alchemy";
 import type { AlchemyNetwork } from "@/lib/alchemy";
 
@@ -49,11 +50,6 @@ const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "8453": "base-mainnet",
 };
 
-/** One on-chain tx can include many ERC20 transfers (bulk send); key by hash + recipient. */
-function transferDedupeKey(txHash: string, toAddress: string | undefined | null): string {
-  return `${txHash.toLowerCase()}:${String(toAddress ?? "").toLowerCase()}`;
-}
-
 function formatAddress(addr: string) {
   if (!addr || addr.length < 10) return addr;
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -79,15 +75,20 @@ function getExplorerUrl(txHash: string): string {
     : `https://sepolia.basescan.org/tx/${txHash}`;
 }
 
-async function fetchEmailsForAddresses(addresses: string[]): Promise<Map<string, string>> {
+async function fetchEmailsForAddresses(
+  addresses: string[],
+  chainId: string
+): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const unique = [...new Set(addresses.filter((a) => a && a.startsWith("0x")))];
   if (unique.length === 0) return map;
   const orFilter = unique.map((a) => `owner_address.ilike.${a}`).join(",");
-  const { data, error } = await supabase
+  let q = supabase
     .from("user_logins")
     .select("user_identifier, owner_address")
     .or(orFilter);
+  if (chainId) q = q.eq("chain_id", chainId);
+  const { data, error } = await q;
   if (error) {
     console.error("fetchEmailsForAddresses error:", error.message);
     return map;
@@ -150,7 +151,7 @@ const TransactionHistory = () => {
 
       const alchemyPromise = alchemyNetwork
         ? getAllTransactions(ownerAddress, tokenAddress, alchemyNetwork).catch((err) => {
-            console.error("[TransactionHistory] Alchemy fetch error:", err);
+            console.error("[TransactionHistory] Kalp token-transfers fetch error:", err);
             return [];
           })
         : Promise.resolve([]);
@@ -183,7 +184,7 @@ const TransactionHistory = () => {
         ...new Set(alchemyTransfers.flatMap((t) => [t.from, t.to]).filter(Boolean)),
       ];
       const allAddresses = [...new Set([...supabaseAddresses, ...alchemyAddresses])];
-      const addressToEmail = await fetchEmailsForAddresses(allAddresses);
+      const addressToEmail = await fetchEmailsForAddresses(allAddresses, chainId);
 
       const resolveDisplay = (addr: string) =>
         addressToEmail.get(addr?.toLowerCase()) ?? (addr ? formatAddress(addr) : "N/A");

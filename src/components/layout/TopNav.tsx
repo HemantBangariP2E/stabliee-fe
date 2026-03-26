@@ -7,6 +7,7 @@ import { toast } from "@/hooks/use-toast";
 import QRCodeComponent from "react-qr-code";
 import baseLogo from "@/assets/base-logo.png";
 import { supabase } from "@/hooks/supabaseClient";
+import { getAccountChainId } from "@/lib/accountScope";
 
 import {
   DropdownMenu,
@@ -47,9 +48,17 @@ const TopNav = ({
   const [email, setEmail] = useState(emailProp ?? "");
   const [walletAddress, setWalletAddress] = useState(walletAddressProp ?? "");
   const [fullWalletAddress, setFullWalletAddress] = useState("");
+  const [networkVersion, setNetworkVersion] = useState(0);
 
   const userIdentifier = typeof window !== "undefined" ? localStorage.getItem("userIdentifier") || "" : "";
   const ownerAddress = typeof window !== "undefined" ? localStorage.getItem("ownerAddress") || "" : "";
+
+  useEffect(() => {
+    const ethereum = (window as { ethereum?: { on?: (e: string, h: () => void) => void; removeListener?: (e: string, h: () => void) => void } }).ethereum;
+    const onChainChanged = () => setNetworkVersion((v) => v + 1);
+    ethereum?.on?.("chainChanged", onChainChanged);
+    return () => ethereum?.removeListener?.("chainChanged", onChainChanged);
+  }, []);
 
   useEffect(() => {
     if (!userIdentifier && !ownerAddress) {
@@ -61,9 +70,10 @@ const TopNav = ({
       return;
     }
     const fetchUser = async () => {
+      const chainId = getAccountChainId();
       let q = supabase.from("user_logins").select("user_identifier, owner_address");
-      if (userIdentifier) q = q.eq("user_identifier", userIdentifier);
-      else q = q.eq("owner_address", ownerAddress);
+      if (userIdentifier) q = q.eq("user_identifier", userIdentifier).eq("chain_id", chainId);
+      else q = q.eq("owner_address", ownerAddress).eq("chain_id", chainId);
       const { data, error } = await q.maybeSingle();
       if (error || !data) {
         if (emailProp) setEmail(emailProp);
@@ -85,7 +95,7 @@ const TopNav = ({
       }
     };
     fetchUser();
-  }, [userIdentifier, ownerAddress, emailProp, walletAddressProp]);
+  }, [userIdentifier, ownerAddress, emailProp, walletAddressProp, networkVersion]);
 
   const displayWallet = fullWalletAddress || ownerAddress;
   const shortWallet = walletAddress || (ownerAddress ? `${ownerAddress.slice(0, 6)}...${ownerAddress.slice(-4)}` : "");

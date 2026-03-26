@@ -15,6 +15,7 @@ import { supabase } from "@/hooks/supabaseClient";
 import { ethers } from "ethers";
 import { GasFeeDisplay } from "@/components/GasFeeDisplay";
 import { getConnectedNetworkDisplay } from "@/lib/utils";
+import { getAccountChainId } from "@/lib/accountScope";
 const mockBeneficiaries = [{
   id: 1,
   name: "TTT",
@@ -78,6 +79,14 @@ const Transactions = () => {
     "idle" | "sending" | "retrying" | "success" | "failed"
   >("idle");
   const [retryCount, setRetryCount] = useState(0);
+  const [networkVersion, setNetworkVersion] = useState(0);
+
+  useEffect(() => {
+    const ethereum = (window as { ethereum?: { on?: (e: string, h: () => void) => void; removeListener?: (e: string, h: () => void) => void } }).ethereum;
+    const onChainChanged = () => setNetworkVersion((v) => v + 1);
+    ethereum?.on?.("chainChanged", onChainChanged);
+    return () => ethereum?.removeListener?.("chainChanged", onChainChanged);
+  }, []);
   const [url, setUrl] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const walletDropdownRef = useRef<HTMLDivElement>(null);
@@ -371,10 +380,12 @@ const insertTransaction = async ({
   const isRecipientInDb = async (walletAddress: string): Promise<boolean> => {
     const addr = walletAddress.trim();
     if (!addr) return false;
+    const chainId = getAccountChainId();
     const { data, error } = await supabase
       .from("user_logins")
       .select("owner_address")
       .ilike("owner_address", addr)
+      .eq("chain_id", chainId)
       .limit(1)
       .maybeSingle();
     if (error) return false;
@@ -382,10 +393,12 @@ const insertTransaction = async ({
   };
 
   const getUserWalletByEmail = async (email: string): Promise<string | null> => {
+    const chainId = getAccountChainId();
     const { data, error } = await supabase
       .from("user_logins")
       .select("owner_address")
       .eq("user_identifier", email.trim().toLowerCase())
+      .eq("chain_id", chainId)
       .maybeSingle();
     if (error || !data?.owner_address) return null;
     return data.owner_address;
@@ -614,10 +627,12 @@ await supabase
       return;
     }
 
+    const chainId = getAccountChainId();
     const { data, error } = await supabase
       .from("user_logins")
       .select("owner_address")
       .eq("user_identifier", normalizedEmail)
+      .eq("chain_id", chainId)
       .maybeSingle();
 
     if (error) {
@@ -629,13 +644,13 @@ await supabase
       console.log("Owner address for email:", data.owner_address);
       setRecipientWallet(data.owner_address);
     } else {
-      console.log("No owner address found for this email");
+      console.log("No owner address found for this email on this chain");
       setRecipientWallet("");
     }
   };
 
   fetchOwnerAddress();
-}, [recipientEmail]);
+}, [recipientEmail, networkVersion]);
 
   // const sendTransaction = async (e?: any) => {
   //   if (e && typeof e.preventDefault === "function") {

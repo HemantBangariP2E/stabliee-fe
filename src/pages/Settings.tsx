@@ -6,22 +6,32 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Wallet, Copy } from "lucide-react";
 import { supabase } from "@/hooks/supabaseClient";
+import { getAccountChainId } from "@/lib/accountScope";
 import { toast } from "@/hooks/use-toast";
 
 const Settings = () => {
   const [walletAddress, setWalletAddress] = useState("");
   const [chainSummary, setChainSummary] = useState("");
+  const [networkVersion, setNetworkVersion] = useState(0);
+
+  useEffect(() => {
+    const ethereum = (window as { ethereum?: { on?: (e: string, h: () => void) => void; removeListener?: (e: string, h: () => void) => void } }).ethereum;
+    const onChainChanged = () => setNetworkVersion((v) => v + 1);
+    ethereum?.on?.("chainChanged", onChainChanged);
+    return () => ethereum?.removeListener?.("chainChanged", onChainChanged);
+  }, []);
 
   useEffect(() => {
     const name = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
     const id = localStorage.getItem("chainIdConfig") || "—";
     setChainSummary(`${name === "ETH" ? "Ethereum" : "Base"} · Chain ID ${id}`);
-  }, []);
+  }, [networkVersion]);
 
   useEffect(() => {
     const run = async () => {
       const fromLs = localStorage.getItem("ownerAddress")?.trim() || "";
       const userId = localStorage.getItem("userIdentifier")?.trim() || "";
+      const chainId = getAccountChainId();
 
       if (fromLs) {
         setWalletAddress(fromLs);
@@ -34,9 +44,9 @@ const Settings = () => {
 
       let q = supabase.from("user_logins").select("owner_address");
       if (userId) {
-        q = q.eq("user_identifier", userId);
+        q = q.eq("user_identifier", userId).eq("chain_id", chainId);
       } else {
-        q = q.eq("owner_address", fromLs);
+        q = q.eq("owner_address", fromLs).eq("chain_id", chainId);
       }
       const { data, error } = await q.maybeSingle();
       if (!error && data?.owner_address) {
@@ -46,7 +56,7 @@ const Settings = () => {
       }
     };
     run();
-  }, []);
+  }, [networkVersion]);
 
   const copyAddress = async () => {
     if (!walletAddress) return;

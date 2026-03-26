@@ -10,6 +10,7 @@ import { getConnectedNetworkDisplay } from "@/lib/utils";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/hooks/supabaseClient";
+import { getAccountChainId } from "@/lib/accountScope";
 import { GasFeeDisplay } from "@/components/GasFeeDisplay";
 
 interface BulkTransferRow {
@@ -121,10 +122,12 @@ const BulkSend = () => {
 const fetchEmailWalletMap = async (emails: string[]) => {
   if (!emails.length) return {};
 
+  const chainId = getAccountChainId();
   const { data, error } = await supabase
     .from("user_logins")
     .select("user_identifier, owner_address")
-    .in("user_identifier", emails);
+    .in("user_identifier", emails)
+    .eq("chain_id", chainId);
 
   if (error) {
     console.error("Email check error", error);

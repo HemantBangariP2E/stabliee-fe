@@ -16,6 +16,7 @@ import { supabase } from "@/hooks/supabaseClient";
 import { useAlchemyTransactions } from "@/hooks/useAlchemyTransactions";
 import type { AlchemyNetwork } from "@/lib/alchemy";
 import { clearTransferCache } from "@/lib/alchemy";
+import { getAccountChainId } from "@/lib/accountScope";
 import { ethers } from "ethers";
 
 const TOKEN_ADDRESSES: Record<string, string> = {
@@ -255,11 +256,14 @@ const Dashboard = () => {
   const saveUser = async () => {
     if (!userIdentifier || !ownerAddress) return;
 
-    // 1️⃣ Check if user already exists
+    const chainId = getAccountChainId();
+
+    // 1️⃣ Check if user already exists for this chain (same email allowed on other chains)
     const { data: existingUser, error: fetchError } = await supabase
       .from("user_logins")
       .select("user_identifier")
       .eq("user_identifier", userIdentifier)
+      .eq("chain_id", chainId)
       .maybeSingle();
 
     if (fetchError) {
@@ -269,14 +273,15 @@ const Dashboard = () => {
 
     // 2️⃣ If exists → do nothing
     if (existingUser) {
-      console.log("User already exists, skipping insert");
+      console.log("User already exists for this chain, skipping insert");
       return;
     }
 
-    // 3️⃣ Insert only if not exists
+    // 3️⃣ Insert only if not exists for this chain
     const { error: insertError } = await supabase.from("user_logins").insert({
       user_identifier: userIdentifier,
       owner_address: ownerAddress,
+      chain_id: chainId,
     });
 
     if (insertError) {
@@ -287,7 +292,7 @@ const Dashboard = () => {
   };
 
   saveUser();
-}, [userIdentifier, ownerAddress]);
+}, [userIdentifier, ownerAddress, networkVersion]);
 
 
   return <DashboardLayout>

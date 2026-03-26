@@ -19,7 +19,7 @@ const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
 
 /**
  * Example usage of useAlchemyTransactions.
- * Displays on-chain ERC20 sent/received totals from Alchemy.
+ * Displays on-chain ERC20 sent/received totals from Kalp Wallet API.
  */
 export function AlchemyTotalsCard() {
   const ownerAddress = typeof window !== "undefined" ? localStorage.getItem("ownerAddress") : null;
@@ -38,7 +38,7 @@ export function AlchemyTotalsCard() {
   return (
     <Card className="p-4 rounded-xl border border-border bg-muted/20">
       <p className="text-xs font-medium text-muted-foreground mb-2">
-        On-chain totals (Alchemy)
+        On-chain totals (Kalp)
       </p>
       {loading && (
         <p className="text-sm text-muted-foreground">Loading...</p>

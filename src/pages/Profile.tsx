@@ -10,6 +10,7 @@ import { User, Link2, Info, Copy, Globe, Building2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/hooks/supabaseClient";
+import { getAccountChainId } from "@/lib/accountScope";
 interface WalletMapping {
   email: string;
   wallet: string;
@@ -29,22 +30,34 @@ const Profile = () => {
   const [showDisableConfirm, setShowDisableConfirm] = useState(false);
   const [pendingDisableIndex, setPendingDisableIndex] = useState<number | null>(null);
   const [pendingGlobalDisable, setPendingGlobalDisable] = useState(false);
+  const [networkVersion, setNetworkVersion] = useState(0);
 
-  // Load name from user_logins
+  useEffect(() => {
+    const ethereum = (window as { ethereum?: { on?: (e: string, h: () => void) => void; removeListener?: (e: string, h: () => void) => void } }).ethereum;
+    const onChainChanged = () => setNetworkVersion((v) => v + 1);
+    ethereum?.on?.("chainChanged", onChainChanged);
+    return () => ethereum?.removeListener?.("chainChanged", onChainChanged);
+  }, []);
+
+  // Load name from user_logins (scoped by chain)
   useEffect(() => {
     if (!userIdentifier && !ownerAddress) return;
     const fetchName = async () => {
+      const chainId = getAccountChainId();
       let q = supabase.from("user_logins").select("name");
-      if (userIdentifier) q = q.eq("user_identifier", userIdentifier);
-      else q = q.eq("owner_address", ownerAddress);
+      if (userIdentifier) q = q.eq("user_identifier", userIdentifier).eq("chain_id", chainId);
+      else q = q.eq("owner_address", ownerAddress).eq("chain_id", chainId);
       const { data, error } = await q.maybeSingle();
       if (!error && data?.name) {
         setDisplayName(data.name);
         lastSavedName.current = data.name;
+      } else if (!error) {
+        setDisplayName("");
+        lastSavedName.current = "";
       }
     };
     fetchName();
-  }, [userIdentifier, ownerAddress]);
+  }, [userIdentifier, ownerAddress, networkVersion]);
 
   const saveName = async () => {
     const trimmed = displayName.trim();
@@ -55,9 +68,10 @@ const Profile = () => {
     }
     setSaving(true);
     try {
+      const chainId = getAccountChainId();
       let q = supabase.from("user_logins").update({ name: trimmed });
-      if (userIdentifier) q = q.eq("user_identifier", userIdentifier);
-      else q = q.eq("owner_address", ownerAddress);
+      if (userIdentifier) q = q.eq("user_identifier", userIdentifier).eq("chain_id", chainId);
+      else q = q.eq("owner_address", ownerAddress).eq("chain_id", chainId);
       const { error } = await q;
       if (error) {
         toast({ title: "Failed to update name", description: error.message, variant: "destructive" });

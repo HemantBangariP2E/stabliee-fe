@@ -22,8 +22,8 @@ export interface UseAlchemyTransactionsResult {
 }
 
 /**
- * Fetches ERC20 sent/received totals for a wallet and token via Alchemy.
- * Uses a single batched call (getAllTransactions) to avoid duplicate requests.
+ * Fetches ERC20 sent/received totals for a wallet and token via Kalp Wallet API.
+ * Uses getAllTransactions (both directions) then calculateTotals.
  */
 export function useAlchemyTransactions(
   address: string | null | undefined,
