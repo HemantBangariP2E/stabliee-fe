@@ -25,6 +25,8 @@ type Transaction = {
   transactionId: string;
   batchId: string | null;
   date: string;
+  /** UTC ms for sorting (latest first) */
+  timestampMs: number;
   type: string;
   fromEmail: string;
   toEmail: string;
@@ -34,6 +36,18 @@ type Transaction = {
   gasFee: string;
 };
 
+function kalpTransferTimestampMs(t: { blockTimestamp?: string; blockNum?: string }): number {
+  if (t.blockTimestamp) {
+    const ms = new Date(t.blockTimestamp).getTime();
+    if (!Number.isNaN(ms)) return ms;
+  }
+  if (t.blockNum) {
+    const n = t.blockNum.startsWith("0x") ? parseInt(t.blockNum, 16) : parseInt(t.blockNum, 10);
+    if (Number.isFinite(n)) return n * 12_000;
+  }
+  return 0;
+}
+
 
 
 const TOKEN_ADDRESSES: Record<string, string> = {
@@ -41,12 +55,16 @@ const TOKEN_ADDRESSES: Record<string, string> = {
   "1": "0xfE9F09aa5b416b5A83bD9387A99Fc7b1185e3D2A",
   "84532": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   "8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+  "80002": "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
 };
 const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "11155111": "eth-sepolia",
   "1": "eth-mainnet",
   "84532": "base-sepolia",
   "8453": "base-mainnet",
+  "137": "polygon-mainnet",
+  "80002": "polygon-amoy",
 };
 
 /** One on-chain tx can include many ERC20 transfers (bulk send); key by hash + recipient. */
@@ -68,6 +86,12 @@ function formatDateUTC(dateStr: string | Date): string {
 function getExplorerUrl(txHash: string): string {
   const chainId = localStorage.getItem("chainIdConfig") || "";
   const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
+  if (chainId === "1") return `https://etherscan.io/tx/${txHash}`;
+  if (chainId === "11155111") return `https://sepolia.etherscan.io/tx/${txHash}`;
+  if (chainId === "8453") return `https://basescan.org/tx/${txHash}`;
+  if (chainId === "84532") return `https://sepolia.basescan.org/tx/${txHash}`;
+  if (chainId === "137") return `https://polygonscan.com/tx/${txHash}`;
+  if (chainId === "80002") return `https://amoy.polygonscan.com/tx/${txHash}`;
   const isMainnet = chainId === "1" || chainId === "8453";
   if (blockchainName === "ETH") {
     return isMainnet
@@ -79,15 +103,17 @@ function getExplorerUrl(txHash: string): string {
     : `https://sepolia.basescan.org/tx/${txHash}`;
 }
 
-async function fetchEmailsForAddresses(addresses: string[]): Promise<Map<string, string>> {
+async function fetchEmailsForAddresses(addresses: string[], chainId: string): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const unique = [...new Set(addresses.filter((a) => a && a.startsWith("0x")))];
   if (unique.length === 0) return map;
   const orFilter = unique.map((a) => `owner_address.ilike.${a}`).join(",");
-  const { data, error } = await supabase
+  let q = supabase
     .from("user_logins")
     .select("user_identifier, owner_address")
     .or(orFilter);
+  if (chainId) q = q.eq("chain_id", chainId);
+  const { data, error } = await q;
   if (error) {
     console.error("fetchEmailsForAddresses error:", error.message);
     return map;
@@ -150,7 +176,7 @@ const TransactionHistory = () => {
 
       const alchemyPromise = alchemyNetwork
         ? getAllTransactions(ownerAddress, tokenAddress, alchemyNetwork).catch((err) => {
-            console.error("[TransactionHistory] Alchemy fetch error:", err);
+            console.error("[TransactionHistory] Kalp token-transfers fetch error:", err);
             return [];
           })
         : Promise.resolve([]);
@@ -183,7 +209,7 @@ const TransactionHistory = () => {
         ...new Set(alchemyTransfers.flatMap((t) => [t.from, t.to]).filter(Boolean)),
       ];
       const allAddresses = [...new Set([...supabaseAddresses, ...alchemyAddresses])];
-      const addressToEmail = await fetchEmailsForAddresses(allAddresses);
+      const addressToEmail = await fetchEmailsForAddresses(allAddresses, chainId);
 
       const resolveDisplay = (addr: string) =>
         addressToEmail.get(addr?.toLowerCase()) ?? (addr ? formatAddress(addr) : "N/A");
@@ -205,11 +231,13 @@ const TransactionHistory = () => {
         const isUserSender = String(tx.owner_address || "").toLowerCase() === ownerLower;
         const dbDirection = tx.direction === "SENT" ? "Send" : tx.direction === "RECEIVE" ? "Receive" : "Send";
         const type = isUserSender ? dbDirection : dbDirection === "Send" ? "Receive" : "Send";
+        const createdMs = tx.created_at ? new Date(tx.created_at).getTime() : 0;
         const t: Transaction = {
           id: index + 1,
           transactionId: tx.tx_hash,
           batchId: tx.batch_id || null,
-            date: formatDateUTC(tx.created_at),
+          date: formatDateUTC(tx.created_at),
+          timestampMs: Number.isFinite(createdMs) ? createdMs : 0,
           type,
           fromEmail,
           toEmail,
@@ -230,14 +258,6 @@ const TransactionHistory = () => {
         seenTransferKeys.add(transferDedupeKey(tx.tx_hash, tx.to_address));
       }
 
-      const sortTimeByKey = new Map<string, number>();
-      for (const d of supabaseRows) {
-        sortTimeByKey.set(
-          transferDedupeKey(d.tx_hash, d.to_address),
-          new Date(d.created_at).getTime()
-        );
-      }
-
       const alchemyTransfersWithoutFeeLegs = alchemyTransfers.filter((t) => !isPlatformFeeTransfer(t));
 
       let nextId = mapped.length + 1;
@@ -247,12 +267,7 @@ const TransactionHistory = () => {
         seenTransferKeys.add(dedupeKey);
         const isSent = t.from.toLowerCase() === ownerLower;
         const otherAddr = isSent ? t.to : t.from;
-        const sortTime = t.blockTimestamp
-          ? new Date(t.blockTimestamp).getTime()
-          : t.blockNum
-            ? parseInt(t.blockNum, 16) * 12_000
-            : 0;
-        sortTimeByKey.set(dedupeKey, sortTime);
+        const tsMs = kalpTransferTimestampMs(t);
         const alchemyTx: Transaction = {
           id: nextId++,
           transactionId: t.hash,
@@ -260,6 +275,7 @@ const TransactionHistory = () => {
           date: t.blockTimestamp
             ? formatDateUTC(t.blockTimestamp)
             : `Block ${t.blockNum ? parseInt(t.blockNum, 16) : "?"}`,
+          timestampMs: tsMs,
           type: isSent ? "Send" : "Receive",
           fromEmail: resolveDisplay(t.from),
           toEmail: resolveDisplay(t.to),
@@ -271,12 +287,10 @@ const TransactionHistory = () => {
         mapped.push(alchemyTx);
       }
 
-      const sortKey = (row: Transaction) =>
-        transferDedupeKey(row.transactionId, row.address);
-
-      mapped.sort(
-        (a, b) => (sortTimeByKey.get(sortKey(b)) ?? 0) - (sortTimeByKey.get(sortKey(a)) ?? 0)
-      );
+      mapped.sort((a, b) => b.timestampMs - a.timestampMs);
+      mapped.forEach((row, i) => {
+        row.id = i + 1;
+      });
 
       setTransactions(mapped);
       setLoading(false);
@@ -338,7 +352,8 @@ const TransactionHistory = () => {
     return isNaN(d.getTime()) ? null : d;
   };
 
-  const filteredTransactions = transactions.filter((tx) => {
+  const filteredTransactions = [...transactions]
+    .filter((tx) => {
     const query = searchQuery.toLowerCase();
 
     const matchesSearch =
@@ -379,7 +394,8 @@ const TransactionHistory = () => {
     }
 
     return matchesSearch && matchesType && matchesStatus && matchesDate;
-  });
+  })
+    .sort((a, b) => b.timestampMs - a.timestampMs);
 
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
   const currentPageSafe = Math.min(currentPage, totalPages);

@@ -1,256 +1,381 @@
-import { Alchemy, Network, AssetTransfersCategory, SortingOrder } from "alchemy-sdk";
-import type { AssetTransfersResult } from "alchemy-sdk";
+/**
+ * ERC-20 transfer history via Kalp Wallet API
+ * `GET .../transactions/token-transfers`
+ *
+ * Query params: address, chainId, direction?, contractAddress?, limit?, pageKey?
+ * Pagination: prefer `pageKey` (cursor); fall back to `page` when API omits cursors.
+ */
 
-/** Supported networks for ERC20 transaction fetching */
 export type AlchemyNetwork =
   | "eth-sepolia"
   | "base-sepolia"
   | "eth-mainnet"
-  | "base-mainnet";
+  | "base-mainnet"
+  | "polygon-mainnet"
+  | "polygon-amoy";
 
-/** Normalized ERC20 transfer format */
+const NETWORK_TO_CHAIN_ID: Record<AlchemyNetwork, string> = {
+  "eth-sepolia": "11155111",
+  "base-sepolia": "84532",
+  "eth-mainnet": "1",
+  "base-mainnet": "8453",
+  "polygon-mainnet": "137",
+  "polygon-amoy": "80002",
+};
+
 export interface NormalizedTransfer {
   from: string;
   to: string;
   amount: number;
   hash: string;
-  /** Block number (hex string). Present when fetched with metadata. */
   blockNum?: string;
-  /** ISO timestamp. Present when fetched with metadata. */
   blockTimestamp?: string;
 }
 
-/** Totals from calculateTotals */
 export interface TransferTotals {
   sent: number;
   received: number;
 }
 
-/** MPC/platform fee legs (same tx hash as user send); exclude from UI and totals */
 const PLATFORM_FEE_TO_ADDRESSES_LOWER = new Set([
-  "0x3ef4bd3948976bd4af03003e5bc0e109e016d563", // Base family fee recipient
-  "0xaaed3fcddeda26f9ad0582698d9be012e48d88af", // Ethereum family fee recipient
+  "0x3ef4bd3948976bd4af03003e5bc0e109e016d563",
+  "0xaaed3fcddeda26f9ad0582698d9be012e48d88af",
 ]);
 
-/** True when the transfer is the platform fee payment (not the main recipient transfer). */
 export function isPlatformFeeTransfer(transfer: { to: string }): boolean {
   return PLATFORM_FEE_TO_ADDRESSES_LOWER.has(transfer.to.toLowerCase());
 }
 
-/** Base fee recipient — hide Supabase rows where this address is stored as owner_address. */
 const BASE_FEE_RECIPIENT_LOWER = "0x3ef4bd3948976bd4af03003e5bc0e109e016d563";
 
-/** True if this owner should not appear as the row owner in transaction history (fee wallet). */
 export function isPlatformFeeOwnerAddress(ownerAddress: string | null | undefined): boolean {
   if (!ownerAddress) return false;
   return ownerAddress.toLowerCase() === BASE_FEE_RECIPIENT_LOWER;
 }
 
-const API_KEY =
-  import.meta.env.VITE_ALCHEMY_KEY || "e_gedLLWmPahJs32v18G-";
+const KALP_BASE =
+  (import.meta.env.VITE_KALP_WALLET_API_URL as string | undefined)?.replace(/\/$/, "") ||
+  "https://alpha-wallet-api.kalp.studio";
 
-const networkMap: Record<AlchemyNetwork, Network> = {
-  "eth-sepolia": Network.ETH_SEPOLIA,
-  "base-sepolia": Network.BASE_SEPOLIA,
-  "eth-mainnet": Network.ETH_MAINNET,
-  "base-mainnet": Network.BASE_MAINNET,
-};
+/** Results per request (API default 50, max 1000). */
+const DEFAULT_LIMIT = Math.min(
+  Math.max(
+    10,
+    Number(import.meta.env.VITE_KALP_TRANSFER_LIMIT) || 50
+  ),
+  1000
+);
 
-/** Cache for Alchemy instances per network */
-const alchemyInstances: Partial<Record<AlchemyNetwork, Alchemy>> = {};
+/** Max cursor/page batches per fetch (caps work when totalPages is huge). */
+const MAX_FETCH_BATCHES = Number(import.meta.env.VITE_KALP_MAX_BATCHES) || 40;
 
-/** Simple in-memory cache for debugging (optional) */
 const transferCache = new Map<string, { data: NormalizedTransfer[]; ts: number }>();
-const CACHE_TTL_MS = 60_000; // 1 minute
+const CACHE_TTL_MS = 60_000;
 
-/** Clear transfer cache (e.g. when user wants fresh data on Activity page) */
 export function clearTransferCache(): void {
   transferCache.clear();
 }
 
-function getAlchemy(network: AlchemyNetwork): Alchemy {
-  if (!alchemyInstances[network]) {
-    alchemyInstances[network] = new Alchemy({
-      apiKey: API_KEY,
-      network: networkMap[network],
-    });
-    if (import.meta.env.DEV) {
-      console.log("[Alchemy] Created instance for network:", network);
-    }
-  }
-  return alchemyInstances[network]!;
+function networkToChainId(network: AlchemyNetwork): string {
+  return NETWORK_TO_CHAIN_ID[network];
 }
 
-function parseAmount(
-  t: AssetTransfersResult & { metadata?: { blockTimestamp?: string } }
-): number {
-  const val = t.value;
-  const numVal = typeof val === "string" ? parseFloat(val) : val;
-  if (numVal != null && Number.isFinite(numVal)) return numVal;
-  const raw = (t as { rawContract?: { rawValue?: string; decimals?: string | number } }).rawContract;
-  if (raw?.rawValue != null) {
-    let decimals = 6;
-    if (raw.decimals != null) {
-      const d = raw.decimals;
-      decimals = typeof d === "number" ? d : parseInt(String(d), String(d).startsWith("0x") ? 16 : 10) || 6;
+export function buildKalpTokenTransfersUrl(params: {
+  address: string;
+  chainId: string;
+  limit: number;
+  contractAddress?: string;
+  direction?: "from" | "to";
+  pageKey?: string;
+  page?: number;
+}): string {
+  const q = new URLSearchParams({
+    address: params.address.trim(),
+    chainId: String(params.chainId),
+    limit: String(Math.min(1000, Math.max(1, params.limit))),
+  });
+  const c = params.contractAddress?.trim();
+  if (c) q.set("contractAddress", c);
+  if (params.direction) q.set("direction", params.direction);
+  if (params.pageKey) q.set("pageKey", params.pageKey);
+  else if (params.page != null && params.page >= 1) q.set("page", String(params.page));
+  return `${KALP_BASE}/transactions/token-transfers?${q.toString()}`;
+}
+
+interface KalpApiEnvelope {
+  status?: number;
+  message?: string;
+  result?: {
+    transfers?: unknown[];
+    page?: string | number;
+    totalPages?: string | number;
+    hasMore?: boolean;
+    pageKey?: string | null;
+    nextPageKey?: string | null;
+  };
+}
+
+async function fetchKalpTransfersOnce(opts: {
+  address: string;
+  chainId: string;
+  limit: number;
+  contractAddress?: string;
+  direction?: "from" | "to";
+  pageKey?: string;
+  page?: number;
+}): Promise<{
+  transfers: unknown[];
+  nextPageKey: string | null;
+  nextPage: number | null;
+  hasMore: boolean;
+}> {
+  const url = buildKalpTokenTransfersUrl({
+    address: opts.address,
+    chainId: opts.chainId,
+    limit: opts.limit,
+    contractAddress: opts.contractAddress,
+    direction: opts.direction,
+    pageKey: opts.pageKey,
+    page: opts.pageKey ? undefined : opts.page,
+  });
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Kalp API HTTP ${res.status}`);
+  const json = (await res.json()) as KalpApiEnvelope;
+  if (json.status !== undefined && json.status !== 200) {
+    throw new Error(json.message || `Kalp API status ${json.status}`);
+  }
+  const result = json.result;
+  if (!result) {
+    return { transfers: [], nextPageKey: null, nextPage: null, hasMore: false };
+  }
+
+  const transfers = Array.isArray(result.transfers) ? result.transfers : [];
+  const cursor =
+    (typeof result.pageKey === "string" && result.pageKey) ||
+    (typeof result.nextPageKey === "string" && result.nextPageKey) ||
+    null;
+
+  const pageNum = Math.max(1, Number(result.page) || 1);
+  const totalPages = Math.max(1, Number(result.totalPages) || 1);
+  const hasMore = Boolean(result.hasMore);
+  const nextPage = pageNum < totalPages && hasMore ? pageNum + 1 : null;
+
+  return {
+    transfers,
+    nextPageKey: cursor,
+    nextPage,
+    hasMore,
+  };
+}
+
+function pickString(r: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    const v = r[k];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return "";
+}
+
+function rawContractDecimals(rc: Record<string, unknown> | undefined): number | string | undefined {
+  if (!rc) return undefined;
+  return (rc.decimals ?? rc.decimal ?? rc.tokenDecimals) as number | string | undefined;
+}
+
+function parseRawAmount(raw: unknown, decimals: number | string | undefined): number {
+  let d = 6;
+  if (typeof decimals === "number" && Number.isFinite(decimals)) d = decimals;
+  else if (typeof decimals === "string") {
+    const parsed = decimals.startsWith("0x") ? parseInt(decimals, 16) : parseInt(decimals, 10);
+    if (Number.isFinite(parsed)) d = parsed;
+  }
+  try {
+    if (typeof raw === "string") {
+      const s = raw.trim();
+      if (/^0x[0-9a-fA-F]+$/.test(s)) return Number(BigInt(s)) / 10 ** d;
+      if (/^[0-9]+$/.test(s)) return Number(BigInt(s)) / 10 ** d;
     }
-    const rawNum = Number(BigInt(raw.rawValue));
-    return rawNum / Math.pow(10, decimals);
+    if (typeof raw === "number") return raw / 10 ** d;
+  } catch {
+    /* ignore */
   }
   return 0;
 }
 
-function normalizeTransfer(
-  t: AssetTransfersResult & { metadata?: { blockTimestamp?: string } }
-): NormalizedTransfer {
-  return {
-    from: t.from,
-    to: t.to ?? "",
-    amount: parseAmount(t),
-    hash: t.hash,
-    blockNum: t.blockNum,
-    blockTimestamp: t.metadata?.blockTimestamp,
-  };
-}
+function parseAmountFromKalp(r: Record<string, unknown>): number {
+  const rc = r.rawContract as Record<string, unknown> | undefined;
 
-async function fetchAllPages(
-  network: AlchemyNetwork,
-  tokenAddress: string,
-  params: { fromAddress?: string; toAddress?: string }
-): Promise<NormalizedTransfer[]> {
-  const alchemy = getAlchemy(network);
-  const all: NormalizedTransfer[] = [];
-  let pageKey: string | undefined;
+  if (typeof r.amount === "number" && Number.isFinite(r.amount)) return r.amount;
+  if (typeof r.amount === "string") {
+    const a = parseFloat(r.amount);
+    if (Number.isFinite(a)) return a;
+  }
 
-  do {
-    const response = await alchemy.core.getAssetTransfers({
-      category: [AssetTransfersCategory.ERC20],
-      contractAddresses: [tokenAddress],
-      fromAddress: params.fromAddress,
-      toAddress: params.toAddress,
-      excludeZeroValue: true,
-      maxCount: 1000,
-      pageKey,
-      withMetadata: true,
-      fromBlock: "0x0",
-      toBlock: "latest",
-      order: SortingOrder.DESCENDING,
-    });
-
-    const normalized = response.transfers.map(normalizeTransfer);
-    all.push(...normalized);
-    pageKey = response.pageKey;
-
-    if (import.meta.env.DEV && response.transfers.length > 0) {
-      console.log(
-        "[Alchemy] Fetched page:",
-        response.transfers.length,
-        "transfers, hasMore:",
-        !!pageKey
+  if (typeof r.value === "number" && Number.isFinite(r.value)) {
+    if (rc?.rawValue != null) {
+      return parseRawAmount(
+        rc.rawValue,
+        rawContractDecimals(rc) ?? (r.decimals as string | number | undefined)
       );
     }
-  } while (pageKey);
+    return r.value;
+  }
 
-  return all;
+  if (typeof r.value === "string" && !/^[0-9]+$/.test(r.value)) {
+    const n = parseFloat(r.value);
+    if (Number.isFinite(n)) return n;
+  }
+
+  if (r.valueFormatted != null) {
+    const n = parseFloat(String(r.valueFormatted));
+    if (Number.isFinite(n)) return n;
+  }
+
+  const raw = rc?.rawValue ?? rc?.value ?? r.value ?? r.amount;
+  const decimals = Number(r.decimals ?? r.tokenDecimals ?? rawContractDecimals(rc) ?? 6);
+  if (raw != null && String(raw).trim() !== "") return parseRawAmount(raw, decimals);
+  return 0;
+}
+
+export function normalizeKalpTransfer(raw: unknown): NormalizedTransfer {
+  if (!raw || typeof raw !== "object") {
+    return { from: "", to: "", amount: 0, hash: "" };
+  }
+  const r = raw as Record<string, unknown>;
+  const from = pickString(r, ["from", "fromAddress", "sender", "from_address"]);
+  const to = pickString(r, ["to", "toAddress", "recipient", "to_address"]);
+  const hash = pickString(r, ["transactionHash", "txHash", "hash", "txnHash", "transaction_hash"]);
+  const amount = parseAmountFromKalp(r);
+
+  let blockNum: string | undefined;
+  const bn = r.blockNumber ?? r.blockNum;
+  if (bn != null) blockNum = typeof bn === "string" ? bn : String(bn);
+
+  const metadata = r.metadata as Record<string, unknown> | undefined;
+  const ts =
+    metadata?.blockTimestamp ??
+    r.blockTimestamp ??
+    r.timestamp ??
+    r.timeStamp ??
+    r.block_timestamp;
+  const blockTimestamp = typeof ts === "string" && ts.trim() ? ts.trim() : undefined;
+
+  return { from, to, amount, hash, blockNum, blockTimestamp };
 }
 
 /**
- * Fetch all ERC20 transfers SENT from an address for a specific token.
+ * Paginate token-transfers using `pageKey` when provided, else numeric `page`.
+ * Stops after empty streak or max batches.
  */
+async function fetchTransfersBatched(opts: {
+  address: string;
+  chainId: string;
+  contractAddress?: string;
+  direction?: "from" | "to";
+  limit?: number;
+}): Promise<NormalizedTransfer[]> {
+  const limit = opts.limit ?? DEFAULT_LIMIT;
+  const out: NormalizedTransfer[] = [];
+  let pageKey: string | undefined;
+  let page = 1;
+  let consecutiveEmpty = 0;
+  const emptyStreakLimit = 3;
+
+  for (let batch = 0; batch < MAX_FETCH_BATCHES; batch++) {
+    const { transfers, nextPageKey, nextPage, hasMore } = await fetchKalpTransfersOnce({
+      address: opts.address,
+      chainId: opts.chainId,
+      limit,
+      contractAddress: opts.contractAddress,
+      direction: opts.direction,
+      pageKey,
+      page: pageKey ? undefined : page,
+    });
+
+    if (transfers.length === 0) {
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= emptyStreakLimit) break;
+    } else {
+      consecutiveEmpty = 0;
+      for (const raw of transfers) {
+        out.push(normalizeKalpTransfer(raw));
+      }
+    }
+
+    if (nextPageKey) {
+      pageKey = nextPageKey;
+      continue;
+    }
+
+    if (!hasMore || nextPage == null) break;
+    page = nextPage;
+    pageKey = undefined;
+  }
+
+  return out;
+}
+
 export async function getSentTransactions(
   address: string,
   tokenAddress: string,
   network: AlchemyNetwork = "base-sepolia"
 ): Promise<NormalizedTransfer[]> {
+  const chainId = networkToChainId(network);
   const cacheKey = `sent:${network}:${address.toLowerCase()}:${tokenAddress.toLowerCase()}`;
   const cached = transferCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-    if (import.meta.env.DEV) console.log("[Alchemy] Cache hit (sent):", cacheKey);
-    return cached.data;
-  }
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.data;
 
-  try {
-    const transfers = await fetchAllPages(network, tokenAddress, {
-      fromAddress: address,
-    });
-    transferCache.set(cacheKey, { data: transfers, ts: Date.now() });
-    if (import.meta.env.DEV) {
-      console.log("[Alchemy] getSentTransactions:", address, "count:", transfers.length);
-    }
-    return transfers;
-  } catch (err) {
-    console.error("[Alchemy] getSentTransactions error:", err);
-    throw err;
-  }
+  const data = await fetchTransfersBatched({
+    address,
+    chainId,
+    contractAddress: tokenAddress,
+    direction: "from",
+  });
+  transferCache.set(cacheKey, { data, ts: Date.now() });
+  return data;
 }
 
-/**
- * Fetch all ERC20 transfers RECEIVED by an address for a specific token.
- */
 export async function getReceivedTransactions(
   address: string,
   tokenAddress: string,
   network: AlchemyNetwork = "base-sepolia"
 ): Promise<NormalizedTransfer[]> {
+  const chainId = networkToChainId(network);
   const cacheKey = `received:${network}:${address.toLowerCase()}:${tokenAddress.toLowerCase()}`;
   const cached = transferCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-    if (import.meta.env.DEV) console.log("[Alchemy] Cache hit (received):", cacheKey);
-    return cached.data;
-  }
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.data;
 
-  try {
-    const transfers = await fetchAllPages(network, tokenAddress, {
-      toAddress: address,
-    });
-    transferCache.set(cacheKey, { data: transfers, ts: Date.now() });
-    if (import.meta.env.DEV) {
-      console.log("[Alchemy] getReceivedTransactions:", address, "count:", transfers.length);
-    }
-    return transfers;
-  } catch (err) {
-    console.error("[Alchemy] getReceivedTransactions error:", err);
-    throw err;
-  }
+  const data = await fetchTransfersBatched({
+    address,
+    chainId,
+    contractAddress: tokenAddress,
+    direction: "to",
+  });
+  transferCache.set(cacheKey, { data, ts: Date.now() });
+  return data;
 }
 
-/**
- * Fetch all ERC20 transfers (sent + received) for an address and token.
- * Batches both calls in parallel for performance.
- */
 export async function getAllTransactions(
   address: string,
   tokenAddress: string,
   network: AlchemyNetwork = "base-sepolia"
 ): Promise<NormalizedTransfer[]> {
+  const chainId = networkToChainId(network);
   const cacheKey = `all:${network}:${address.toLowerCase()}:${tokenAddress.toLowerCase()}`;
   const cached = transferCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-    if (import.meta.env.DEV) console.log("[Alchemy] Cache hit (all):", cacheKey);
-    return cached.data;
-  }
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.data;
 
-  try {
-    const [sent, received] = await Promise.all([
-      getSentTransactions(address, tokenAddress, network),
-      getReceivedTransactions(address, tokenAddress, network),
-    ]);
+  const merged = await fetchTransfersBatched({
+    address,
+    chainId,
+    contractAddress: tokenAddress,
+    // omit direction → both sent and received (per Kalp docs)
+  });
 
-    const combined = [...sent, ...received];
-    transferCache.set(cacheKey, { data: combined, ts: Date.now() });
-    if (import.meta.env.DEV) {
-      console.log("[Alchemy] getAllTransactions:", address, "sent:", sent.length, "received:", received.length);
-    }
-    return combined;
-  } catch (err) {
-    console.error("[Alchemy] getAllTransactions error:", err);
-    throw err;
-  }
+  transferCache.set(cacheKey, { data: merged, ts: Date.now() });
+  return merged;
 }
 
-/**
- * Calculate sent and received totals from normalized transfers for a given address.
- */
 export function calculateTotals(
   transactions: NormalizedTransfer[],
   address: string
@@ -261,19 +386,11 @@ export function calculateTotals(
 
   for (const tx of transactions) {
     if (isPlatformFeeTransfer(tx)) continue;
-
     const fromMatch = tx.from.toLowerCase() === addr;
     const toMatch = tx.to.toLowerCase() === addr;
-
-    if (fromMatch && !toMatch) {
-      sent += tx.amount;
-    } else if (!fromMatch && toMatch) {
-      received += tx.amount;
-    }
+    if (fromMatch && !toMatch) sent += tx.amount;
+    else if (!fromMatch && toMatch) received += tx.amount;
   }
 
-  if (import.meta.env.DEV && transactions.length > 0) {
-    console.log("[Alchemy] calculateTotals for", address, "-> sent:", sent, "received:", received);
-  }
   return { sent, received };
 }

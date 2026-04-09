@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = "dist"
 
+# Required env vars (set in Netlify UI → Site configuration → Environment variables):
+# VITE_SUPABASE_URL = https://<project>.supabase.co
+# VITE_SUPABASE_ANON_KEY = <anon JWT from Supabase Dashboard → Settings → API>
+# Without these, login/activity/transactions backed by Supabase will not work after deploy.
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

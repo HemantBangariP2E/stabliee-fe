@@ -15,6 +15,45 @@ import { supabase } from "@/hooks/supabaseClient";
 import { ethers } from "ethers";
 import { GasFeeDisplay } from "@/components/GasFeeDisplay";
 import { getConnectedNetworkDisplay } from "@/lib/utils";
+
+function getSessionChainId(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("chainIdConfig")?.trim() ?? "";
+}
+
+/**
+ * Resolve wallet for an email on the current chain. Uses chain_id to avoid
+ * .maybeSingle() errors when the same email has multiple rows (multi-chain).
+ * Falls back to rows where chain_id IS NULL (legacy).
+ */
+async function resolveOwnerAddressByEmail(email: string): Promise<string | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  const chainId = getSessionChainId();
+
+  const fetchRow = async (chainFilter: "match" | "null" | "any") => {
+    let q = supabase.from("user_logins").select("owner_address").eq("user_identifier", normalized);
+    if (chainFilter === "match" && chainId) q = q.eq("chain_id", chainId);
+    if (chainFilter === "null") q = q.is("chain_id", null);
+    const { data, error } = await q.limit(1);
+    if (error) {
+      console.error("user_logins lookup error:", error.message);
+      return null;
+    }
+    const row = data?.[0] as { owner_address?: string } | undefined;
+    return row?.owner_address?.trim() || null;
+  };
+
+  if (chainId) {
+    const onChain = await fetchRow("match");
+    if (onChain) return onChain;
+    const legacy = await fetchRow("null");
+    if (legacy) return legacy;
+  }
+
+  return fetchRow("any");
+}
+
 const mockBeneficiaries = [{
   id: 1,
   name: "TTT",
@@ -371,24 +410,27 @@ const insertTransaction = async ({
   const isRecipientInDb = async (walletAddress: string): Promise<boolean> => {
     const addr = walletAddress.trim();
     if (!addr) return false;
-    const { data, error } = await supabase
-      .from("user_logins")
-      .select("owner_address")
-      .ilike("owner_address", addr)
-      .limit(1)
-      .maybeSingle();
-    if (error) return false;
-    return data != null;
+    const chainId = getSessionChainId();
+
+    const rowExists = async (chainFilter: "match" | "null" | "any") => {
+      let q = supabase.from("user_logins").select("owner_address").ilike("owner_address", addr).limit(1);
+      if (chainFilter === "match" && chainId) q = q.eq("chain_id", chainId);
+      if (chainFilter === "null") q = q.is("chain_id", null);
+      const { data, error } = await q;
+      if (error) return false;
+      return (data?.length ?? 0) > 0;
+    };
+
+    if (chainId) {
+      if (await rowExists("match")) return true;
+      if (await rowExists("null")) return true;
+      return false;
+    }
+    return rowExists("any");
   };
 
   const getUserWalletByEmail = async (email: string): Promise<string | null> => {
-    const { data, error } = await supabase
-      .from("user_logins")
-      .select("owner_address")
-      .eq("user_identifier", email.trim().toLowerCase())
-      .maybeSingle();
-    if (error || !data?.owner_address) return null;
-    return data.owner_address;
+    return resolveOwnerAddressByEmail(email);
   };
 
   const sendTransaction = async (e) => {
@@ -606,36 +648,32 @@ await supabase
     }
   }
 
+  const [chainScope, setChainScope] = useState(0);
   useEffect(() => {
-  const fetchOwnerAddress = async () => {
-    const normalizedEmail = recipientEmail?.trim().toLowerCase();
-    if (!normalizedEmail) {
-      setRecipientWallet("");
-      return;
-    }
+    const ethereum = (window as { ethereum?: { on?: (e: string, h: () => void) => void; removeListener?: (e: string, h: () => void) => void } }).ethereum;
+    const onChainChanged = () => setChainScope((v) => v + 1);
+    ethereum?.on?.("chainChanged", onChainChanged);
+    return () => ethereum?.removeListener?.("chainChanged", onChainChanged);
+  }, []);
 
-    const { data, error } = await supabase
-      .from("user_logins")
-      .select("owner_address")
-      .eq("user_identifier", normalizedEmail)
-      .maybeSingle();
+  useEffect(() => {
+    const fetchOwnerAddress = async () => {
+      const normalizedEmail = recipientEmail?.trim().toLowerCase();
+      if (!normalizedEmail) {
+        setRecipientWallet("");
+        return;
+      }
 
-    if (error) {
-      console.error("Error fetching owner address:", error.message);
-      return;
-    }
+      const resolved = await resolveOwnerAddressByEmail(normalizedEmail);
+      if (resolved) {
+        setRecipientWallet(resolved);
+      } else {
+        setRecipientWallet("");
+      }
+    };
 
-    if (data?.owner_address) {
-      console.log("Owner address for email:", data.owner_address);
-      setRecipientWallet(data.owner_address);
-    } else {
-      console.log("No owner address found for this email");
-      setRecipientWallet("");
-    }
-  };
-
-  fetchOwnerAddress();
-}, [recipientEmail]);
+    void fetchOwnerAddress();
+  }, [recipientEmail, chainScope]);
 
   // const sendTransaction = async (e?: any) => {
   //   if (e && typeof e.preventDefault === "function") {
