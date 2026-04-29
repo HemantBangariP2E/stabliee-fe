@@ -550,7 +550,31 @@ await supabase
   feeRecipient
 );
 
-        console.log("Transaction hash:", hash);
+   console.log("Transaction hash is :", hash);
+
+// 🔥 1. HANDLE APPROVAL FIRST
+if (hash?.result?.approvalId) {
+  toast({
+    title: "Approval Required",
+    description: "Waiting for approval",
+  });
+
+  setLoading(false);
+  return;
+}
+
+// 🔥 2. THEN HANDLE SUCCESS
+if (hash?.result?.txHash) {
+  await insertTransaction({
+    txHash: hash.result.txHash,
+    to: recipientAddress,
+    amount: Number(amount),
+    direction: "SENT",
+    status: "SUCCESS",
+    gasFee: networkFee,
+    ownerAddress: localStorage.getItem("ownerAddress") || "",
+  });
+}
         // setTxHash(hash.txHash);
 const pendingHash = "PENDING_" + Date.now();
 await insertTransaction({
