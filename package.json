@@ -8,7 +8,11 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bot:install": "npm install --prefix telegram-bot",
+    "bot:dev": "npm run dev --prefix telegram-bot",
+    "bot:start": "npm start --prefix telegram-bot",
+    "bot:reset-menu": "npm run reset-menu --prefix telegram-bot"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -1,0 +1,16 @@
+{
+  "name": "stabliee-telegram-bot",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "reset-menu": "node scripts/reset-menu-button.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "grammy": "^1.38.4",
+    "vite_react_shadcn_ts": "file:.."
+  }
+}
