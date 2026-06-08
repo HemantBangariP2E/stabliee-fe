@@ -11,6 +11,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
+import { getTxExplorerUrl, TOKEN_ADDRESSES } from "@/lib/chains";
 import { getAllTransactions } from "@/lib/alchemy";
 import type { AlchemyNetwork } from "@/lib/alchemy";
 
@@ -30,10 +31,6 @@ type Transaction = {
 
 
 
-const TOKEN_ADDRESSES: Record<string, string> = {
-  "11155111": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38",
-  "84532": "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
-};
 const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "11155111": "eth-sepolia",
   "84532": "base-sepolia",
@@ -51,17 +48,7 @@ function formatDateUTC(dateStr: string | Date): string {
 }
 
 function getExplorerUrl(txHash: string): string {
-  const chainId = localStorage.getItem("chainIdConfig") || "";
-  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-  const isMainnet = chainId === "1" || chainId === "8453";
-  if (blockchainName === "ETH") {
-    return isMainnet
-      ? `https://etherscan.io/tx/${txHash}`
-      : `https://sepolia.etherscan.io/tx/${txHash}`;
-  }
-  return isMainnet
-    ? `https://basescan.org/tx/${txHash}`
-    : `https://sepolia.basescan.org/tx/${txHash}`;
+  return getTxExplorerUrl(txHash);
 }
 
 async function fetchEmailsForAddresses(addresses: string[]): Promise<Map<string, string>> {

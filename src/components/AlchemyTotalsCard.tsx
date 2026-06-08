@@ -1,14 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { useAlchemyTransactions } from "@/hooks/useAlchemyTransactions";
 import type { AlchemyNetwork } from "@/lib/alchemy";
-
-/** Token addresses per network (matches Transactions.tsx) */
-const TOKEN_ADDRESSES: Record<string, string> = {
-  "11155111": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // ETH Sepolia USDT
-  "1": "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // ETH Mainnet
-  "84532": "0x28bD35b56bfCa732C7DF2F2d08312169189605A8", // Base Sepolia USDC
-  "8453": "0x28bD35b56bfCa732C7DF2F2d08312169189605A8", // Base Mainnet
-};
+import { TOKEN_ADDRESSES } from "@/lib/chains";
 
 const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
   "11155111": "eth-sepolia",

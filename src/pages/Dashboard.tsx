@@ -14,55 +14,8 @@ import baseLogo from "@/assets/base-logo.png";
 import { useEffect } from "react";
 import { supabase } from "@/hooks/supabaseClient";
 import { useAlchemyTransactions } from "@/hooks/useAlchemyTransactions";
-import { ethers } from "ethers";
-
-const ERC20_ABI = [
-  "function balanceOf(address owner) view returns (uint256)",
-  "function decimals() view returns (uint8)",
-];
-
-const getEthSepoliaRpcUrl = (): string =>
-  (import.meta.env.VITE_ETH_SEPOLIA_RPC as string) || "https://ethereum-sepolia-rpc.publicnode.com";
-const getEthMainnetRpcUrl = (): string =>
-  (import.meta.env.VITE_ETH_MAINNET_RPC as string) || "https://ethereum.publicnode.com";
-
-const getRpcUrlAndToken = (): { rpcUrl: string; tokenAddress: string } => {
-  const chainId = localStorage.getItem("chainIdConfig") || "";
-  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
-    if (chainId === "1") {
-      return {
-        rpcUrl: getEthMainnetRpcUrl(),
-        tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // Ethereum mainnet token
-      };
-    }
-    return {
-      rpcUrl: getEthSepoliaRpcUrl(),
-      tokenAddress: "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38", // USDT Sepolia
-    };
-  }
-  if (chainId === "84532") {
-    return {
-      rpcUrl: "https://sepolia.base.org",
-      tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8",
-    };
-  }
-  return {
-    rpcUrl: "https://mainnet.base.org",
-    tokenAddress: "0x28bD35b56bfCa732C7DF2F2d08312169189605A8", // Base mainnet token
-  };
-};
-
-const getTokenBalance = async (address: string): Promise<number> => {
-  const { rpcUrl, tokenAddress } = getRpcUrlAndToken();
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-  const [balance, decimals] = await Promise.all([
-    contract.balanceOf(address),
-    contract.decimals(),
-  ]);
-  return Number(ethers.formatUnits(balance, decimals));
-};
+import { getAlchemyNetwork, getChainConfig, getConnectedNetworkDisplay, getTokenLabel } from "@/lib/chains";
+import { fetchTokenBalance } from "@/lib/tokenBalance";
 
 const chartData = [{
   date: "30 Nov",
@@ -89,38 +42,12 @@ const chartData = [{
 type MoneyAction = "add" | "withdraw";
 type SelectedCoin = "USDC" | "EURC";
 
-function getConnectedTokenLabel(): string {
-  if (typeof window === "undefined") return "USDC";
-  const chainId = localStorage.getItem("chainIdConfig") || "";
-  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
-    return "USDT";
-  }
-  return "USDC";
-}
-
-function getConnectedNetworkDisplay(): { name: string; isBase: boolean } {
-  if (typeof window === "undefined") return { name: "Base", isBase: true };
-  const chainId = localStorage.getItem("chainIdConfig") || "";
-  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
-    return {
-      name: chainId === "1" ? "Ethereum" : "Ethereum (Sepolia)",
-      isBase: false,
-    };
-  }
-  return {
-    name: chainId === "84532" ? "Base Sepolia" : "Base",
-    isBase: true,
-  };
-}
-
 const Dashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const userIdentifier = localStorage.getItem("userIdentifier") || undefined;
   const ownerAddress = localStorage.getItem("ownerAddress") || undefined;
-  const connectedTokenLabel = getConnectedTokenLabel();
+  const connectedTokenLabel = getTokenLabel();
   const connectedNetwork = getConnectedNetworkDisplay();
 
   const [totalSent, setTotalSent] = useState(0);
@@ -149,13 +76,9 @@ const Dashboard = () => {
       ? `${localStorage.getItem("chainIdConfig") ?? ""}_${localStorage.getItem("blockchainName") ?? ""}`
       : "";
 
-  const chainId = typeof window !== "undefined" ? localStorage.getItem("chainIdConfig") || "" : "";
-  const tokenAddress =
-    chainId === "11155111" || chainId === "1"
-      ? "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38"
-      : "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
-  const alchemyNetwork =
-    chainId === "11155111" ? "eth-sepolia" : chainId === "84532" ? "base-sepolia" : undefined;
+  const chainConfig = getChainConfig();
+  const tokenAddress = chainConfig.tokenAddress;
+  const alchemyNetwork = getAlchemyNetwork();
 
   const { sent: alchemySent, received: alchemyReceived, loading: alchemyLoading } = useAlchemyTransactions(
     ownerAddress,
@@ -171,7 +94,7 @@ const Dashboard = () => {
     let cancelled = false;
     (async () => {
       try {
-        const balance = await getTokenBalance(ownerAddress);
+        const balance = await fetchTokenBalance(ownerAddress);
         if (!cancelled) setUsdcBalance(balance);
       } catch (e) {
         console.error("Error fetching token balance:", e);

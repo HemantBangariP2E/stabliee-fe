@@ -5,6 +5,7 @@ import { Copy, Wallet, ArrowLeft } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import QRCode from "react-qr-code";
 import baseLogo from "@/assets/base-logo.png";
+import { getConnectedNetworkDisplay, getTokenLabel } from "@/lib/chains";
 
 /** CAIP-10 / EIP-155 format: eip155:chainId:address - uses chainIdConfig from localStorage */
 const getQrAddressFormat = (address: string): string => {
@@ -12,25 +13,10 @@ const getQrAddressFormat = (address: string): string => {
   return address ? `eip155:${chainId}:${address}` : "";
 };
 
-const getNetworkDisplay = (): { name: string; isBase: boolean } => {
-  const chainId = localStorage.getItem("chainIdConfig") || "";
-  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-  if (blockchainName === "ETH" || chainId === "11155111" || chainId === "1") {
-    return { name: chainId === "1" ? "Ethereum" : "Ethereum (Sepolia)", isBase: false };
-  }
-  return { name: chainId === "84532" ? "Base Sepolia" : "Base", isBase: true };
-};
-
-const getTokenLabel = (): string => {
-  const chainId = localStorage.getItem("chainIdConfig") || "";
-  const blockchainName = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-  return blockchainName === "ETH" || chainId === "11155111" || chainId === "1" ? "USDT" : "USDC";
-};
-
 const Receive = () => {
   const navigate = useNavigate();
   const ownerAddress = localStorage.getItem("ownerAddress") || "";
-  const network = getNetworkDisplay();
+  const network = getConnectedNetworkDisplay();
   const tokenLabel = getTokenLabel();
   const qrValue = getQrAddressFormat(ownerAddress);
 
