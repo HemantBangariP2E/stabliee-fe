@@ -13,7 +13,7 @@ import baseLogo from "@/assets/base-logo.png";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/hooks/supabaseClient";
 import { GasFeeDisplay } from "@/components/GasFeeDisplay";
-import { isEthChain, getTokenLabel, getChainConfig, getTxExplorerUrl } from "@/lib/chains";
+import { isEthChain, getTokenLabel, getChainConfig, getTxExplorerUrl, resolveTokenAddress } from "@/lib/chains";
 import { fetchTokenBalance } from "@/lib/tokenBalance";
 import { getConnectedNetworkDisplay } from "@/lib/utils";
 const mockBeneficiaries = [{
@@ -464,8 +464,7 @@ await supabase
         const feeRecipient = isEthChainForFee
           ? "0xaAEd3fCdDEDA26F9AD0582698d9Be012e48D88aF"
           : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
-        const chainConfig = getChainConfig();
-        const tokenContractAddress = chainConfig.tokenAddress;
+        const tokenContractAddress = resolveTokenAddress();
         const win = window as any;
         let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
         if (typeof executeMPCTxn !== 'function') {

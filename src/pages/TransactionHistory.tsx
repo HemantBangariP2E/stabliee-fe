@@ -11,9 +11,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
-import { getTxExplorerUrl, TOKEN_ADDRESSES } from "@/lib/chains";
+import { getAlchemyNetwork, getChainConfig, getTxExplorerUrl } from "@/lib/chains";
 import { getAllTransactions } from "@/lib/alchemy";
-import type { AlchemyNetwork } from "@/lib/alchemy";
 
 type Transaction = {
   id: number;
@@ -30,11 +29,6 @@ type Transaction = {
 };
 
 
-
-const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
-  "11155111": "eth-sepolia",
-  "84532": "base-sepolia",
-};
 
 function formatAddress(addr: string) {
   if (!addr || addr.length < 10) return addr;
@@ -88,10 +82,10 @@ const TransactionHistory = () => {
   useEffect(() => {
     const fetchTransactions = async () => {
       const ownerAddress = localStorage.getItem("ownerAddress");
-      const chainId = localStorage.getItem("chainIdConfig") || "";
-      const tokenLabel = chainId === "11155111" || chainId === "1" ? "USDT" : "USDC";
-      const alchemyNetwork = CHAIN_TO_NETWORK[chainId];
-      const tokenAddress = TOKEN_ADDRESSES[chainId] ?? TOKEN_ADDRESSES["84532"];
+      const chainConfig = getChainConfig();
+      const tokenLabel = chainConfig.tokenLabel;
+      const alchemyNetwork = getAlchemyNetwork();
+      const tokenAddress = chainConfig.tokenAddress;
 
       if (!ownerAddress) return;
 

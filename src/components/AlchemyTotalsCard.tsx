@@ -1,12 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { useAlchemyTransactions } from "@/hooks/useAlchemyTransactions";
-import type { AlchemyNetwork } from "@/lib/alchemy";
-import { TOKEN_ADDRESSES } from "@/lib/chains";
-
-const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
-  "11155111": "eth-sepolia",
-  "84532": "base-sepolia",
-};
+import { getAlchemyNetwork, getChainConfig } from "@/lib/chains";
 
 /**
  * Example usage of useAlchemyTransactions.
@@ -14,9 +8,9 @@ const CHAIN_TO_NETWORK: Record<string, AlchemyNetwork> = {
  */
 export function AlchemyTotalsCard() {
   const ownerAddress = typeof window !== "undefined" ? localStorage.getItem("ownerAddress") : null;
-  const chainId = typeof window !== "undefined" ? localStorage.getItem("chainIdConfig") || "84532" : "84532";
-  const tokenAddress = TOKEN_ADDRESSES[chainId] ?? TOKEN_ADDRESSES["84532"];
-  const network = CHAIN_TO_NETWORK[chainId];
+  const chainConfig = getChainConfig();
+  const tokenAddress = chainConfig.tokenAddress;
+  const network = getAlchemyNetwork();
 
   const { sent, received, loading, error } = useAlchemyTransactions(
     ownerAddress,

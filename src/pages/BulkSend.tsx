@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Download, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import baseLogo from "@/assets/base-logo.png";
-import { getChainConfig, getConnectedNetworkDisplay } from "@/lib/chains";
+import { getChainConfig, getConnectedNetworkDisplay, resolveTokenAddress } from "@/lib/chains";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/hooks/supabaseClient";
@@ -423,7 +423,7 @@ const handleBulkConfirm = async () => {
     const recipientWallet = isEthChainForFee
       ? "0xaAEd3fCdDEDA26F9AD0582698d9Be012e48D88aF"
       : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
-    const tokenContractAddress = getChainConfig().tokenAddress;
+    const tokenContractAddress = resolveTokenAddress();
     // @ts-ignore
     const hash = await window.exectueMPCBulkTokenTxn(
       ownerAddress,

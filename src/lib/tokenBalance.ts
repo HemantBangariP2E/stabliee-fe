@@ -1,4 +1,4 @@
-import { getChainConfig } from "@/lib/chains";
+import { getChainConfig, resolveTokenAddress } from "@/lib/chains";
 import { parseBalanceNumber } from "@/lib/formatBalance";
 import { apiPost, getKalpWalletApiKey, getWalletApiBase } from "@/lib/walletApi";
 
@@ -8,6 +8,7 @@ import { apiPost, getKalpWalletApiKey, getWalletApiBase } from "@/lib/walletApi"
  */
 export async function fetchTokenBalance(walletAddress: string): Promise<number> {
   const config = getChainConfig();
+  const tokenAddress = resolveTokenAddress();
   const chainId = parseInt(config.chainId, 10);
   if (!Number.isFinite(chainId)) {
     throw new Error(`Invalid chain ID: ${config.chainId}`);
@@ -19,7 +20,7 @@ export async function fetchTokenBalance(walletAddress: string): Promise<number> 
       address: walletAddress.trim(),
       chainId,
       currency: config.currency,
-      smartContractAddress: config.tokenAddress,
+      smartContractAddress: tokenAddress,
     },
     { apiKey: getKalpWalletApiKey(), baseUrl: getWalletApiBase() },
   );
