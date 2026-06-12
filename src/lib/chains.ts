@@ -32,8 +32,11 @@ export const CHAIN_IDS = {
   BSC_TESTNET: "97",
 } as const;
 
-export const ETH_USDT_TOKEN = "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38";
-export const BASE_USDC_TOKEN = "0x28bD35b56bfCa732C7DF2F2d08312169189605A8";
+// export const ETH_USDT_TOKEN = "0x6df25D580C2354431C464f25aDee4e7a8c6c72c8";//usdt
+export const ETH_USDT_TOKEN = "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38";//usdc 
+
+
+export const BASE_USDC_TOKEN = "0x1ad8c3B424fC925D75CCFE8dA049A4c245bFa913";
 export const POLYGON_AMOY_TOKEN = "0x5BC94481A667b90e5BA31411536f3aCB804FAA57";
 /** Kalp alpha USDC — same CREATE2 address on Scroll, zkSync, Mantle, Blast, Celo, Palm, Linea, etc. */
 export const ALPHA_USDC_TOKEN = "0xde987ff60a72d14e3c2cdb6975c8c60c3d299da2";

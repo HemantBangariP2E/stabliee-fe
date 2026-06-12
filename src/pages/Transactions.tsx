@@ -475,8 +475,15 @@ await supabase
           throw new Error('Embedded wallet is not ready. Refresh the page and try again, or sign in again from the login page.');
         }
     
-        const amountToSend = amount.trim(); 
-    
+        const amountToSend = amount.trim();
+
+        console.log("[MPC-TXN] chain / token config:", {
+          chainId: localStorage.getItem("chainIdConfig"),
+          nativeToken: localStorage.getItem("nativeToken"),
+          resolvedTokenAddress: tokenContractAddress,
+          blockchainName,
+        });
+
         const hash = await executeMPCTxn(
   localStorage.getItem("ownerAddress"),
   recipientAddress,
