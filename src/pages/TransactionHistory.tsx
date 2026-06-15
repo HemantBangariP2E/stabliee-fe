@@ -30,6 +30,11 @@ type Transaction = {
 
 
 
+function normalizeTxHash(hash: string | null | undefined): string {
+  if (!hash) return "";
+  return hash.trim().toLowerCase();
+}
+
 function formatAddress(addr: string) {
   if (!addr || addr.length < 10) return addr;
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -131,7 +136,13 @@ const TransactionHistory = () => {
         addressToEmail.get(addr?.toLowerCase()) ?? (addr ? formatAddress(addr) : "N/A");
 
       const supabaseTxMap = new Map<string, Transaction>();
-      const mapped = (supabaseData ?? []).map((tx: any, index: number): Transaction => {
+      const mapped: Transaction[] = [];
+      let nextId = 1;
+
+      for (const tx of supabaseData ?? []) {
+        const txHashKey = normalizeTxHash(tx.tx_hash);
+        if (!txHashKey || supabaseTxMap.has(txHashKey)) continue;
+
         const fromEmail =
           tx.from_email && tx.from_email !== "N/A"
             ? tx.from_email
@@ -145,10 +156,10 @@ const TransactionHistory = () => {
               ? resolveDisplay(tx.to_address)
               : "N/A";
         const t: Transaction = {
-          id: index + 1,
+          id: nextId++,
           transactionId: tx.tx_hash,
           batchId: tx.batch_id || null,
-            date: formatDateUTC(tx.created_at),
+          date: formatDateUTC(tx.created_at),
           type: tx.direction === "SENT" ? "Send" : tx.direction === "RECEIVE" ? "Receive" : "Send",
           fromEmail,
           toEmail,
@@ -161,21 +172,23 @@ const TransactionHistory = () => {
               ? `${Number(tx.gas_fee).toFixed(8)} ${tx.token_symbol}`
               : "N/A",
         };
-        supabaseTxMap.set(tx.tx_hash, t);
-        return t;
-      });
+        supabaseTxMap.set(txHashKey, t);
+        mapped.push(t);
+      }
 
       const seenHashes = new Set(supabaseTxMap.keys());
       const sortTimeByHash = new Map<string, number>();
       for (const d of supabaseData ?? []) {
-        sortTimeByHash.set(d.tx_hash, new Date(d.created_at).getTime());
+        const key = normalizeTxHash(d.tx_hash);
+        if (!key) continue;
+        sortTimeByHash.set(key, new Date(d.created_at).getTime());
       }
 
-      let nextId = mapped.length + 1;
       const ownerLower = ownerAddress.toLowerCase();
       for (const t of alchemyTransfers) {
-        if (seenHashes.has(t.hash)) continue;
-        seenHashes.add(t.hash);
+        const hashKey = normalizeTxHash(t.hash);
+        if (!hashKey || seenHashes.has(hashKey)) continue;
+        seenHashes.add(hashKey);
         const isSent = t.from.toLowerCase() === ownerLower;
         const otherAddr = isSent ? t.to : t.from;
         const sortTime = t.blockTimestamp
@@ -183,7 +196,7 @@ const TransactionHistory = () => {
           : t.blockNum
             ? parseInt(t.blockNum, 16) * 12_000
             : 0;
-        sortTimeByHash.set(t.hash, sortTime);
+        sortTimeByHash.set(hashKey, sortTime);
         const alchemyTx: Transaction = {
           id: nextId++,
           transactionId: t.hash,
@@ -203,7 +216,9 @@ const TransactionHistory = () => {
       }
 
       mapped.sort(
-        (a, b) => (sortTimeByHash.get(b.transactionId) ?? 0) - (sortTimeByHash.get(a.transactionId) ?? 0)
+        (a, b) =>
+          (sortTimeByHash.get(normalizeTxHash(b.transactionId)) ?? 0) -
+          (sortTimeByHash.get(normalizeTxHash(a.transactionId)) ?? 0)
       );
 
       setTransactions(mapped);
@@ -451,7 +466,7 @@ const TransactionHistory = () => {
                   <tbody>
                     {paginatedTransactions.map((tx) => (
                       <tr
-                        key={tx.id}
+                        key={tx.transactionId || tx.id}
                         onClick={() => setSelectedTransaction(tx)}
                         className="border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors cursor-pointer h-14"
                       >
@@ -549,7 +564,7 @@ const TransactionHistory = () => {
               <div className="lg:hidden space-y-3">
                 {paginatedTransactions.map((tx) => (
                   <div
-                    key={tx.id}
+                    key={tx.transactionId || tx.id}
                     onClick={() => setSelectedTransaction(tx)}
                     className="border border-border rounded-xl p-4 cursor-pointer hover:bg-muted/20 active:scale-[0.99] transition-all"
                   >

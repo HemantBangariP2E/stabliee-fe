@@ -286,6 +286,10 @@ const insertTransaction = async ({
 }) => {
   // const ownerAddress = localStorage.getItem("ownerAddress")
 
+  if (!ownerAddress) {
+    ownerAddress = localStorage.getItem("ownerAddress") || undefined;
+  }
+
   if (!ownerAddress) return
 
   const { error } = await supabase.from("transactions").insert({
@@ -511,7 +515,7 @@ await supabase
 
    console.log("Transaction hash is :", hash);
 
-// 🔥 1. HANDLE APPROVAL FIRST
+// Handle approval flow
 if (hash?.result?.approvalId) {
   toast({
     title: "Approval Required",
@@ -522,22 +526,17 @@ if (hash?.result?.approvalId) {
   return;
 }
 
-// 🔥 2. THEN HANDLE SUCCESS
-if (hash?.result?.txHash) {
-  await insertTransaction({
-    txHash: hash.result.txHash,
-    to: recipientAddress,
-    amount: Number(amount),
-    direction: "SENT",
-    status: "SUCCESS",
-    gasFee: networkFee,
-    ownerAddress: localStorage.getItem("ownerAddress") || "",
-  });
+const finalTxHash =
+  hash?.result?.txHash ??
+  hash?.txHash ??
+  (typeof hash === "string" ? hash : null);
+
+if (!finalTxHash) {
+  throw new Error("Transaction completed but no transaction hash was returned.");
 }
-        // setTxHash(hash.txHash);
-const pendingHash = "PENDING_" + Date.now();
+
 await insertTransaction({
-  txHash: hash.txHash,
+  txHash: finalTxHash,
   to: recipientAddress,
   amount: Number(amount),
   direction: "SENT",
@@ -549,29 +548,7 @@ await insertTransaction({
   toEmail: sendInputMode === "email" ? recipientEmail : "",
 });
 
-
-
-// await insertTransaction({
-//   txHash: hash.txHash,
-//   to: recipientAddress,             // ✅ receiver
-//   amount: Number(amount),
-//   direction: "RECEIVE",
-//   status: "SUCCESS",
-//   gasFee: 0,                        // optional
-//   ownerAddress: recipientAddress,   // ✅ receiver
-//   fromAddress: account,             // ✅ sender
-//   fromEmail: localStorage.getItem("userIdentifier") || "",
-//   toEmail: recipientEmail
-// });
-
-await supabase
-  .from("transactions")
-  .update({
-    tx_hash: hash.txHash,
-    status: "SUCCESS",
-  })
-  .eq("tx_hash", pendingHash);
-        setUrl(getTxExplorerUrl(hash.txHash));
+        setUrl(getTxExplorerUrl(finalTxHash));
         navigate("/activity");
       } catch (err) {
         console.log("Transaction error:", err);
