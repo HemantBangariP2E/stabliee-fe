@@ -5,6 +5,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronDown, Check } from "lucide-react";
@@ -136,8 +137,11 @@ const Transactions = () => {
   const feePercent = 0.01; // platform fee as 1% of gas (USD)
   const networkFee = 1;
   const [gasFeeUSD, setGasFeeUSD] = useState(0);
+  const [feeToRecipientEnabled, setFeeToRecipientEnabled] = useState(true);
   const serviceFee = 0;
   const platformFeeUSD = gasFeeUSD * feePercent;
+  /** Gas + platform fee sent on-chain to feeRecipient via MPC; 0 when toggle is off */
+  const feeToRecipient = feeToRecipientEnabled ? gasFeeUSD + platformFeeUSD : 0;
 
   const handleGasUsdUpdate = useCallback((usd: number) => {
     setGasFeeUSD(usd);
@@ -188,7 +192,7 @@ const Transactions = () => {
       });
       return;
     }
-    if (gasFeeUSD <= 0) {
+    if (feeToRecipientEnabled && gasFeeUSD <= 0) {
       toast({
         title: "Network Fee Loading",
         description: "Please wait for network gas fees to load before confirming.",
@@ -234,7 +238,7 @@ const Transactions = () => {
   const getTotalAmount = () => {
     const amountNum = parseFloat(amount || "0") || 0;
     // networkFee removed from displayed total (see commented Network Fee UI)
-    return (amountNum + gasFeeUSD + platformFeeUSD + serviceFee).toFixed(6);
+    return (amountNum + feeToRecipient + serviceFee).toFixed(6);
   };
   const handleFinalConfirm = () => {
     setShowConfirmDialog(false);
@@ -457,7 +461,7 @@ await supabase
       }
     } else {
       try {
-        const fee = gasFeeUSD + platformFeeUSD;
+        const fee = feeToRecipientEnabled ? feeToRecipient : 0;
         const feeChainId = localStorage.getItem("chainIdConfig") || "";
         const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
         const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
@@ -482,6 +486,13 @@ await supabase
           nativeToken: localStorage.getItem("nativeToken"),
           resolvedTokenAddress: tokenContractAddress,
           blockchainName,
+        });
+
+        console.log("[MPC-TXN] fee to recipient:", {
+          feeToRecipientEnabled,
+          feeToRecipient,
+          gasFeeUSD,
+          platformFeeUSD,
         });
 
         const hash = await executeMPCTxn(
@@ -810,18 +821,48 @@ await supabase
                     {amount || "0"} {tokenLabel}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span>Gas Fee</span>
-                  <span className="text-foreground font-medium">
-                    ${gasFeeUSD.toFixed(6)}
-                  </span>
+                <div className="flex items-center justify-between gap-3 py-1">
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="fee-to-recipient-toggle" className="text-xs font-medium text-foreground cursor-pointer">
+                      Fee to recipient
+                    </Label>
+                    <span className="text-[10px] text-muted-foreground">
+                      {feeToRecipientEnabled
+                        ? "Gas + platform fee sent to fee recipient"
+                        : "No fee sent to fee recipient (0)"}
+                    </span>
+                  </div>
+                  <Switch
+                    id="fee-to-recipient-toggle"
+                    checked={feeToRecipientEnabled}
+                    onCheckedChange={setFeeToRecipientEnabled}
+                  />
                 </div>
-                <div className="flex items-center justify-between">
-                  <span>Platform fee</span>
-                  <span className="text-foreground font-medium">
-                    ${platformFeeUSD.toFixed(6)}
-                  </span>
-                </div>
+                {feeToRecipientEnabled ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span>Gas fee (to recipient)</span>
+                      <span className="text-foreground font-medium">
+                        ${gasFeeUSD.toFixed(6)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Platform fee (to recipient)</span>
+                      <span className="text-foreground font-medium">
+                        ${platformFeeUSD.toFixed(6)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between font-medium text-foreground">
+                      <span>Total fee to recipient</span>
+                      <span>${feeToRecipient.toFixed(6)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span>Total fee to recipient</span>
+                    <span className="text-foreground font-medium">$0.000000</span>
+                  </div>
+                )}
                 {/* <div className="flex items-center justify-between">
                   <span>Network Fee</span>
                   <span className="text-foreground font-medium">
@@ -856,7 +897,7 @@ await supabase
                 !!amountError ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
-                gasFeeUSD <= 0 ||
+                (feeToRecipientEnabled && gasFeeUSD <= 0) ||
                 (sendInputMode === "email" ? !recipientEmail?.trim() : !recipientWallet?.trim())
               }
 >
@@ -980,17 +1021,26 @@ await supabase
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Gas Fee</span>
+                    <span className="text-sm text-muted-foreground">Fee to recipient</span>
                     <span className="text-sm text-foreground">
-                      ${gasFeeUSD.toFixed(6)}
+                      ${feeToRecipient.toFixed(6)}
+                      {!feeToRecipientEnabled && (
+                        <span className="text-xs text-muted-foreground ml-1">(disabled)</span>
+                      )}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Platform fee</span>
-                    <span className="text-sm text-foreground">
-                      ${platformFeeUSD.toFixed(6)}
-                    </span>
-                  </div>
+                  {feeToRecipientEnabled && (
+                    <>
+                      <div className="flex justify-between items-center text-xs text-muted-foreground">
+                        <span>Includes gas fee</span>
+                        <span>${gasFeeUSD.toFixed(6)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-muted-foreground">
+                        <span>Includes platform fee</span>
+                        <span>${platformFeeUSD.toFixed(6)}</span>
+                      </div>
+                    </>
+                  )}
                   {/* <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Network Fee</span>
                     <span className="text-sm text-foreground">

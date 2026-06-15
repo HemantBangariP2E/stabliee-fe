@@ -22,20 +22,20 @@ import Withdraw from "./pages/Withdraw";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
-const WIDGET_SCRIPT_SRC = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
+const WIDGET_SCRIPT_SRC = "http://localhost:3000/my-widget.js";
 
 const App = () => {
   const scriptLoaded = useRef(false);
 
 useEffect(() => {
   const existingScript = document.querySelector(
-    'script[src="https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js"]'
+    `script[src="${WIDGET_SCRIPT_SRC}"]`
   );
 
   if (existingScript) return;
 
   const script = document.createElement("script");
-  script.src = "https://qa-kalp-embedded-wallet.p2eppl.com/my-widget.js";
+  script.src = WIDGET_SCRIPT_SRC;
   script.async = true;
 
   script.onload = () => {
