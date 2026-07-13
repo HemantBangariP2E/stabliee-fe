@@ -14,8 +14,13 @@ import baseLogo from "@/assets/base-logo.png";
 import { useEffect } from "react";
 import { supabase } from "@/hooks/supabaseClient";
 import { useAlchemyTransactions } from "@/hooks/useAlchemyTransactions";
-import { getAlchemyNetwork, getChainConfig, getConnectedNetworkDisplay, getTokenLabel } from "@/lib/chains";
-import { fetchTokenBalance } from "@/lib/tokenBalance";
+import { getQrAddressFormat } from "@/lib/chains";
+import { fetchChainBalances } from "@/lib/chainBalances";
+import { BlockchainTabs } from "@/components/BlockchainTabs";
+import { useTreSoriContext } from "@/context/TreSoriProvider";
+import { useActiveChain } from "@/hooks/useActiveChain";
+import { useSdkWalletTransactions } from "@/hooks/useSdkWalletTransactions";
+import { ChainListInstance } from "@kalp_studio/tresori-sdk-js";
 
 const chartData = [{
   date: "30 Nov",
@@ -45,10 +50,16 @@ type SelectedCoin = "USDC" | "EURC";
 const Dashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { tresori, initialized } = useTreSoriContext();
+  const {
+    activeChain,
+    activeChainId: chainKey,
+    tokenLabel: connectedTokenLabel,
+    networkDisplay: connectedNetwork,
+  } = useActiveChain();
+
   const userIdentifier = localStorage.getItem("userIdentifier") || undefined;
   const ownerAddress = localStorage.getItem("ownerAddress") || undefined;
-  const connectedTokenLabel = getTokenLabel();
-  const connectedNetwork = getConnectedNetworkDisplay();
 
   const [totalSent, setTotalSent] = useState(0);
   const [totalReceived, setTotalReceived] = useState(0);
@@ -71,31 +82,26 @@ const Dashboard = () => {
     }
   }, [ownerAddress, navigate]);
 
-  const chainKey =
-    typeof window !== "undefined"
-      ? `${localStorage.getItem("chainIdConfig") ?? ""}_${localStorage.getItem("blockchainName") ?? ""}`
-      : "";
-
-  const chainConfig = getChainConfig();
-  const tokenAddress = chainConfig.tokenAddress;
-  const alchemyNetwork = getAlchemyNetwork();
-
-  const { sent: alchemySent, received: alchemyReceived, loading: alchemyLoading } = useAlchemyTransactions(
+  const { sent: sdkSent, received: sdkReceived, loading: sdkTxLoading } = useSdkWalletTransactions(
+    tresori,
+    initialized,
     ownerAddress,
-    tokenAddress,
-    { network: alchemyNetwork ?? "base-sepolia", enabled: !!ownerAddress && !!alchemyNetwork }
+    { chain: activeChain, enabled: !!ownerAddress && !!activeChain },
   );
 
-  const displaySent = alchemyNetwork ? alchemySent : totalSent;
-  const displayReceived = alchemyNetwork ? alchemyReceived : totalReceived;
+  const displaySent = activeChain ? sdkSent : totalSent;
+  const displayReceived = activeChain ? sdkReceived : totalReceived;
 
   useEffect(() => {
-    if (!ownerAddress) return;
+    if (!ownerAddress || !chainKey || !initialized) return;
+    const chain = ChainListInstance.ofChainId(chainKey);
+    if (!chain) return;
+
     let cancelled = false;
     (async () => {
       try {
-        const balance = await fetchTokenBalance(ownerAddress);
-        if (!cancelled) setUsdcBalance(balance);
+        const balances = await fetchChainBalances(tresori, ownerAddress, chain);
+        if (!cancelled) setUsdcBalance(balances.usdc);
       } catch (e) {
         console.error("Error fetching token balance:", e);
         if (!cancelled) setUsdcBalance(null);
@@ -104,7 +110,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [ownerAddress, chainKey]);
+  }, [ownerAddress, chainKey, tresori, initialized]);
 
   const toggleHideNumbers = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -304,7 +310,7 @@ console.log({usdcBalance,totalBalance})
                 <span className="text-muted-foreground font-medium">Send</span>
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {hideNumbers ? "••••••" : alchemyLoading ? "..." : `$${displaySent.toFixed(2)}`}
+                {hideNumbers ? "••••••" : sdkTxLoading ? "..." : `$${displaySent.toFixed(2)}`}
                 <span className="ml-2 text-sm font-normal text-muted-foreground">Debited</span>
               </p>
             </Card>
@@ -319,7 +325,7 @@ console.log({usdcBalance,totalBalance})
                 <span className="text-muted-foreground font-medium">Receive</span>
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {hideNumbers ? "••••••" : alchemyLoading ? "..." : `$${displayReceived.toFixed(2)}`}
+                {hideNumbers ? "••••••" : sdkTxLoading ? "..." : `$${displayReceived.toFixed(2)}`}
                 <span className="ml-2 text-sm font-normal text-muted-foreground">Credited</span>
               </p>
             </Card>
@@ -328,12 +334,15 @@ console.log({usdcBalance,totalBalance})
           
         </div>
 
+        {/* Blockchain tabs + balances */}
+        <BlockchainTabs walletAddress={walletAddress} hideNumbers={hideNumbers} />
+
         {/* Currency Balances */}
-        <Card id="currency-balances" className="p-4 md:p-6 rounded-2xl scroll-mt-24 md:scroll-mt-6">
-          <h2 className="text-lg font-semibold text-foreground mb-4 md:mb-6">Balances</h2>
+        {/* <Card id="currency-balances" className="p-4 md:p-6 rounded-2xl scroll-mt-24 md:scroll-mt-6">
+          <h2 className="text-lg font-semibold text-foreground mb-4 md:mb-6">Active chain stablecoin</h2> */}
 
           {/* Desktop Table View */}
-          <div className="hidden sm:block">
+          {/* <div className="hidden sm:block">
             <table className="w-full">
               <thead>
                 <tr className="text-muted-foreground text-sm border-b border-border">
@@ -353,7 +362,7 @@ console.log({usdcBalance,totalBalance})
                         {/* <p className="text-sm text-muted-foreground">
                           {connectedTokenLabel === "USDT" ? "Tether USD" : "USD Coin"}
                         </p> */}
-                      </div>
+                      {/* </div>
                     </div>
                   </td>
                   <td className="text-right font-bold text-foreground text-base">
@@ -362,29 +371,29 @@ console.log({usdcBalance,totalBalance})
                   <td className="text-right font-bold text-foreground text-base">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</td>
                   
                 </tr>
-                <tr className="border-b border-border/50">
+                <tr className="border-b border-border/50"> */}
                   
                   
                   
                   
-                </tr>
+                {/* </tr>
               </tbody>
             </table>
-          </div>
+          </div> */} 
 
           {/* Mobile Card View */}
-          <div className="sm:hidden space-y-3">
+          {/* <div className="sm:hidden space-y-3"> */}
             {/* USDC Card */}
-            <div className="border border-border rounded-xl p-4">
+            {/* <div className="border border-border rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <img src={usdcLogo} alt={connectedTokenLabel} className="w-9 h-9" />
                   <div>
-                    <p className="font-medium text-foreground">{connectedTokenLabel}</p>
+                    <p className="font-medium text-foreground">{connectedTokenLabel}</p> */}
                     {/* <p className="text-xs text-muted-foreground">
                       {connectedTokenLabel === "USDT" ? "Tether USD" : "USD Coin"}
                     </p> */}
-                  </div>
+                  {/* </div>
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</p>
@@ -395,7 +404,7 @@ console.log({usdcBalance,totalBalance})
               </div>
             </div>
           </div>
-        </Card>
+        </Card> */}
 
         {/* Statistics Chart */}
         
@@ -424,7 +433,7 @@ console.log({usdcBalance,totalBalance})
 
               {/* QR Code */}
               <div className="p-4 bg-white rounded-2xl mb-6 shadow-sm">
-                <QRCode value={walletAddress} size={180} level="M" fgColor="#000000" bgColor="#ffffff" />
+                <QRCode value={getQrAddressFormat(walletAddress, chainKey)} size={180} level="M" fgColor="#000000" bgColor="#ffffff" />
               </div>
 
               {/* Address & Email Cards */}

@@ -11,8 +11,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
-import { getAlchemyNetwork, getChainConfig, getTxExplorerUrl } from "@/lib/chains";
-import { getAllTransactions } from "@/lib/alchemy";
+import { getTxExplorerUrl } from "@/lib/chains";
+import { fetchWalletTransactions, mapSdkTxStatus } from "@/lib/sdkTransactions";
+import { useTreSoriContext } from "@/context/TreSoriProvider";
+import { useActiveChain } from "@/hooks/useActiveChain";
 
 type Transaction = {
   id: number;
@@ -26,14 +28,13 @@ type Transaction = {
   address: string;
   status: string;
   gasFee: string;
+  explorerUrl?: string;
 };
 
 
 
-function normalizeTxHash(hash: string | null | undefined): string {
-  if (!hash) return "";
-  return hash.trim().toLowerCase();
-}
+
+
 
 function formatAddress(addr: string) {
   if (!addr || addr.length < 10) return addr;
@@ -46,8 +47,8 @@ function formatDateUTC(dateStr: string | Date): string {
   return d.toLocaleString("en-US", { timeZone: "UTC", dateStyle: "short", timeStyle: "medium" }) + " UTC";
 }
 
-function getExplorerUrl(txHash: string): string {
-  return getTxExplorerUrl(txHash);
+function getExplorerUrl(txHash: string, chainId?: string): string {
+  return getTxExplorerUrl(txHash, chainId);
 }
 
 async function fetchEmailsForAddresses(addresses: string[]): Promise<Map<string, string>> {
@@ -72,6 +73,8 @@ async function fetchEmailsForAddresses(addresses: string[]): Promise<Map<string,
 }
 
 const TransactionHistory = () => {
+  const { tresori, initialized } = useTreSoriContext();
+  const { activeChain, activeChainId, tokenLabel, nativeSymbol } = useActiveChain();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,146 +90,63 @@ const TransactionHistory = () => {
   useEffect(() => {
     const fetchTransactions = async () => {
       const ownerAddress = localStorage.getItem("ownerAddress");
-      const chainConfig = getChainConfig();
-      const tokenLabel = chainConfig.tokenLabel;
-      const alchemyNetwork = getAlchemyNetwork();
-      const tokenAddress = chainConfig.tokenAddress;
 
-      if (!ownerAddress) return;
+      if (!ownerAddress || !initialized || !activeChain) return;
 
       setLoading(true);
 
-      const supabasePromise = supabase
-        .from("transactions")
-        .select("*")
-        .or(`owner_address.eq.${ownerAddress},to_address.eq.${ownerAddress}`)
-        .order("created_at", { ascending: false });
+      try {
+        const sdkTransfers = await fetchWalletTransactions(tresori, {
+          chain: activeChain,
+          walletAddress: ownerAddress,
+        });
 
-      const alchemyPromise = alchemyNetwork
-        ? getAllTransactions(ownerAddress, tokenAddress, alchemyNetwork)
-        : Promise.resolve([]);
+        const sdkAddresses = [
+          ...new Set(sdkTransfers.flatMap((t) => [t.from, t.to]).filter(Boolean)),
+        ];
+        const addressToEmail = await fetchEmailsForAddresses(sdkAddresses);
 
-      const [supabaseResult, alchemyTransfers] = await Promise.all([
-        supabasePromise,
-        alchemyPromise,
-      ]);
+        const resolveDisplay = (addr: string) =>
+          addressToEmail.get(addr?.toLowerCase()) ?? (addr ? formatAddress(addr) : "N/A");
 
-      const { data: supabaseData, error } = supabaseResult;
+        const ownerLower = ownerAddress.toLowerCase();
+        const mapped: Transaction[] = sdkTransfers.map((t, index) => {
+          const isSent = t.from.toLowerCase() === ownerLower;
+          const otherAddr = isSent ? t.to : t.from;
+          const currency = t.contractAddress ? tokenLabel : nativeSymbol;
+          return {
+            id: index + 1,
+            transactionId: t.hash,
+            batchId: null,
+            date: t.blockTimestamp ? formatDateUTC(t.blockTimestamp) : "—",
+            type: isSent ? "Send" : "Receive",
+            fromEmail: resolveDisplay(t.from),
+            toEmail: resolveDisplay(t.to),
+            amount: `${t.amount.toFixed(8)} ${currency}`,
+            address: otherAddr,
+            status: mapSdkTxStatus(t.status),
+            gasFee: "N/A",
+            explorerUrl: t.blockchainUrl,
+          };
+        });
 
-      if (error) {
-        console.error("Fetch tx error:", error.message);
+        mapped.sort((a, b) => {
+          const aTime = a.date !== "—" ? new Date(a.date).getTime() : 0;
+          const bTime = b.date !== "—" ? new Date(b.date).getTime() : 0;
+          return bTime - aTime;
+        });
+
+        setTransactions(mapped);
+      } catch (err) {
+        console.error("Fetch SDK transactions error:", err);
+        setTransactions([]);
+      } finally {
+        setLoading(false);
       }
-
-      const supabaseAddresses: string[] = [];
-      for (const tx of supabaseData ?? []) {
-        if ((!tx.from_email || tx.from_email === "N/A") && tx.from_address) {
-          supabaseAddresses.push(tx.from_address);
-        }
-        if ((!tx.to_email || tx.to_email === "N/A") && tx.to_address) {
-          supabaseAddresses.push(tx.to_address);
-        }
-      }
-      const alchemyAddresses = [
-        ...new Set(alchemyTransfers.flatMap((t) => [t.from, t.to]).filter(Boolean)),
-      ];
-      const allAddresses = [...new Set([...supabaseAddresses, ...alchemyAddresses])];
-      const addressToEmail = await fetchEmailsForAddresses(allAddresses);
-
-      const resolveDisplay = (addr: string) =>
-        addressToEmail.get(addr?.toLowerCase()) ?? (addr ? formatAddress(addr) : "N/A");
-
-      const supabaseTxMap = new Map<string, Transaction>();
-      const mapped: Transaction[] = [];
-      let nextId = 1;
-
-      for (const tx of supabaseData ?? []) {
-        const txHashKey = normalizeTxHash(tx.tx_hash);
-        if (!txHashKey || supabaseTxMap.has(txHashKey)) continue;
-
-        const fromEmail =
-          tx.from_email && tx.from_email !== "N/A"
-            ? tx.from_email
-            : tx.from_address
-              ? resolveDisplay(tx.from_address)
-              : "N/A";
-        const toEmail =
-          tx.to_email && tx.to_email !== "N/A"
-            ? tx.to_email
-            : tx.to_address
-              ? resolveDisplay(tx.to_address)
-              : "N/A";
-        const t: Transaction = {
-          id: nextId++,
-          transactionId: tx.tx_hash,
-          batchId: tx.batch_id || null,
-          date: formatDateUTC(tx.created_at),
-          type: tx.direction === "SENT" ? "Send" : tx.direction === "RECEIVE" ? "Receive" : "Send",
-          fromEmail,
-          toEmail,
-          amount: `${Number(tx.amount).toFixed(8)} ${tx.token_symbol}`,
-          address: tx.to_address,
-          status:
-            tx.status === "SUCCESS" ? "Success" : tx.status === "FAILED" ? "Failed" : "Pending",
-          gasFee:
-            tx.gas_fee !== null
-              ? `${Number(tx.gas_fee).toFixed(8)} ${tx.token_symbol}`
-              : "N/A",
-        };
-        supabaseTxMap.set(txHashKey, t);
-        mapped.push(t);
-      }
-
-      const seenHashes = new Set(supabaseTxMap.keys());
-      const sortTimeByHash = new Map<string, number>();
-      for (const d of supabaseData ?? []) {
-        const key = normalizeTxHash(d.tx_hash);
-        if (!key) continue;
-        sortTimeByHash.set(key, new Date(d.created_at).getTime());
-      }
-
-      const ownerLower = ownerAddress.toLowerCase();
-      for (const t of alchemyTransfers) {
-        const hashKey = normalizeTxHash(t.hash);
-        if (!hashKey || seenHashes.has(hashKey)) continue;
-        seenHashes.add(hashKey);
-        const isSent = t.from.toLowerCase() === ownerLower;
-        const otherAddr = isSent ? t.to : t.from;
-        const sortTime = t.blockTimestamp
-          ? new Date(t.blockTimestamp).getTime()
-          : t.blockNum
-            ? parseInt(t.blockNum, 16) * 12_000
-            : 0;
-        sortTimeByHash.set(hashKey, sortTime);
-        const alchemyTx: Transaction = {
-          id: nextId++,
-          transactionId: t.hash,
-          batchId: null,
-          date: t.blockTimestamp
-            ? formatDateUTC(t.blockTimestamp)
-            : `Block ${t.blockNum ? parseInt(t.blockNum, 16) : "?"}`,
-          type: isSent ? "Send" : "Receive",
-          fromEmail: resolveDisplay(t.from),
-          toEmail: resolveDisplay(t.to),
-          amount: `${t.amount.toFixed(8)} ${tokenLabel}`,
-          address: otherAddr,
-          status: "Success",
-          gasFee: "N/A",
-        };
-        mapped.push(alchemyTx);
-      }
-
-      mapped.sort(
-        (a, b) =>
-          (sortTimeByHash.get(normalizeTxHash(b.transactionId)) ?? 0) -
-          (sortTimeByHash.get(normalizeTxHash(a.transactionId)) ?? 0)
-      );
-
-      setTransactions(mapped);
-      setLoading(false);
     };
 
     fetchTransactions();
-  }, []);
+  }, [tresori, initialized, activeChain, activeChainId, tokenLabel, nativeSymbol]);
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
@@ -505,7 +425,7 @@ const TransactionHistory = () => {
                           {tx.transactionId ? (
                             <div className="flex items-center gap-1.5 font-mono">
                               <a
-                                href={getExplorerUrl(tx.transactionId)}
+                                href={tx.explorerUrl ?? getExplorerUrl(tx.transactionId, activeChainId)}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-primary hover:underline truncate max-w-[120px]"
@@ -608,7 +528,7 @@ const TransactionHistory = () => {
                           </p>
                           {tx.transactionId && (
                             <a
-                              href={getExplorerUrl(tx.transactionId)}
+                              href={tx.explorerUrl ?? getExplorerUrl(tx.transactionId, activeChainId)}
                               target="_blank"
                               rel="noreferrer"
                               onClick={(e) => e.stopPropagation()}

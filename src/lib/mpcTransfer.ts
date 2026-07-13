@@ -3,6 +3,9 @@ import type { MpcSession } from "@/lib/walletSession";
 import { resolveTokenAddress } from "@/lib/chains";
 
 const USDC_DECIMALS = 6;
+const NATIVE_DECIMALS = 18;
+
+export type TransferMode = "native" | "gasless";
 
 type TreSoriInstance = ReturnType<typeof TreSori>;
 
@@ -30,6 +33,78 @@ export function getFeeRecipient(chain: Chain): string {
     : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
 }
 
+export type SendMpcTransferArgs = {
+  tresori: TreSoriInstance;
+  session: MpcSession;
+  chain: Chain;
+  toAddress: string;
+  amount: string;
+  mode: TransferMode;
+  feeAmount?: number;
+  /** When mode is gasless: true = relay gasless, false = ERC-20 user pays gas */
+  gasless?: boolean;
+};
+
+export async function sendMpcTransfer({
+  tresori,
+  session,
+  chain,
+  toAddress,
+  amount,
+  mode,
+  feeAmount = 0,
+  gasless = true,
+}: SendMpcTransferArgs): Promise<string> {
+  const tokenAddress = resolveTokenAddress(chain.chainId, chain.blockchain);
+  const useGasless = mode === "gasless" && gasless;
+
+  const result = await tresori.transferMpcTokens({
+    fromAddress: session.walletAddress,
+    toAddress,
+    amount: amount.trim(),
+    chain,
+    clientShare: session.clientShare,
+    sessionId: session.sessionId,
+    userIdentity: session.email,
+    ...(mode === "gasless"
+      ? { tokenAddress, decimals: USDC_DECIMALS, isGasless: useGasless }
+      : { isGasless: false, decimals: NATIVE_DECIMALS }),
+  });
+
+  const approvalId = (result as { result?: { approvalId?: string } })?.result?.approvalId;
+  if (approvalId) {
+    throw new Error("Approval required. Please complete approval and try again.");
+  }
+
+  const txHash = extractTxHash(result);
+  if (!txHash) {
+    throw new Error("Transaction completed but no transaction hash was returned.");
+  }
+
+  if (feeAmount > 0 && mode === "gasless" && useGasless) {
+    const feeRecipient = getFeeRecipient(chain);
+    const feeResult = await tresori.transferMpcTokens({
+      fromAddress: session.walletAddress,
+      toAddress: feeRecipient,
+      amount: feeAmount.toString(),
+      chain,
+      clientShare: session.clientShare,
+      sessionId: session.sessionId,
+      userIdentity: session.email,
+      tokenAddress,
+      decimals: USDC_DECIMALS,
+      isGasless: true,
+    });
+    const feeTxHash = extractTxHash(feeResult);
+    if (!feeTxHash) {
+      console.warn("Fee transfer completed without tx hash");
+    }
+  }
+
+  return txHash;
+}
+
+/** @deprecated Use sendMpcTransfer with mode instead */
 export type SendUsdcTransferArgs = {
   tresori: TreSoriInstance;
   session: MpcSession;
@@ -49,52 +124,16 @@ export async function sendUsdcTransfer({
   feeAmount = 0,
   mpcGaslessEnabled = false,
 }: SendUsdcTransferArgs): Promise<string> {
-  const tokenAddress = resolveTokenAddress();
-
-  const result = await tresori.transferMpcTokens({
-    fromAddress: session.walletAddress,
-    toAddress,
-    amount: amount.trim(),
+  return sendMpcTransfer({
+    tresori,
+    session,
     chain,
-    clientShare: session.clientShare,
-    sessionId: session.sessionId,
-    userIdentity: session.email,
-    tokenAddress,
-    decimals: USDC_DECIMALS,
-    isGasless: mpcGaslessEnabled ? undefined : false,
+    toAddress,
+    amount,
+    feeAmount,
+    mode: "gasless",
+    gasless: mpcGaslessEnabled,
   });
-
-  const approvalId = (result as { result?: { approvalId?: string } })?.result?.approvalId;
-  if (approvalId) {
-    throw new Error("Approval required. Please complete approval and try again.");
-  }
-
-  const txHash = extractTxHash(result);
-  if (!txHash) {
-    throw new Error("Transaction completed but no transaction hash was returned.");
-  }
-
-  if (feeAmount > 0) {
-    const feeRecipient = getFeeRecipient(chain);
-    const feeResult = await tresori.transferMpcTokens({
-      fromAddress: session.walletAddress,
-      toAddress: feeRecipient,
-      amount: feeAmount.toString(),
-      chain,
-      clientShare: session.clientShare,
-      sessionId: session.sessionId,
-      userIdentity: session.email,
-      tokenAddress,
-      decimals: USDC_DECIMALS,
-      isGasless: mpcGaslessEnabled ? undefined : false,
-    });
-    const feeTxHash = extractTxHash(feeResult);
-    if (!feeTxHash) {
-      console.warn("Fee transfer completed without tx hash");
-    }
-  }
-
-  return txHash;
 }
 
 export type BulkRecipient = {
@@ -128,13 +167,14 @@ export async function sendBulkUsdcTransfers({
 
   for (let i = 0; i < recipients.length; i++) {
     onProgress?.({ current: i + 1, total: recipients.length });
-    const hash = await sendUsdcTransfer({
+    const hash = await sendMpcTransfer({
       tresori,
       session,
       chain,
       toAddress: recipients[i].to,
       amount: recipients[i].amount,
-      mpcGaslessEnabled,
+      mode: "gasless",
+      gasless: mpcGaslessEnabled,
     });
     hashes.push(hash);
   }

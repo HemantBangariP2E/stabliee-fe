@@ -6,11 +6,11 @@ import { Card } from "@/components/ui/card";
 import { Download, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import baseLogo from "@/assets/base-logo.png";
-import { getChainConfig, getConnectedNetworkDisplay, getTxExplorerUrl } from "@/lib/chains";
+import { getChainConfig, getTxExplorerUrl } from "@/lib/chains";
 import { useTreSoriContext } from "@/context/TreSoriProvider";
 import { getMpcSession } from "@/lib/walletSession";
-import { resolveSdkChainOrThrow } from "@/lib/sdkChain";
 import { sendBulkUsdcTransfers } from "@/lib/mpcTransfer";
+import { useActiveChain } from "@/hooks/useActiveChain";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/hooks/supabaseClient";
@@ -99,6 +99,7 @@ function formatExactAmount(n: number): string {
 const BulkSend = () => {
   const navigate = useNavigate();
   const { tresori, mpcGaslessEnabled } = useTreSoriContext();
+  const { activeChain, activeChainId, networkDisplay: connectedNetwork } = useActiveChain();
   const [bulkSendMode, setBulkSendMode] = useState<"email" | "wallet">("email");
   const [bulkTransferData, setBulkTransferData] = useState<BulkTransferRow[]>([]);
   const [showBulkPreview, setShowBulkPreview] = useState(false);
@@ -111,7 +112,6 @@ const BulkSend = () => {
   const feePercent = 0.01; // 1% of bulk gas (USD)
   const [gasFeeBaseUSD, setGasFeeBaseUSD] = useState(0);
   const gasChain = getGasChain();
-  const connectedNetwork = getConnectedNetworkDisplay();
 
   const n = bulkTransferData.length;
   const bulkGasUSD =
@@ -425,7 +425,10 @@ const handleBulkConfirm = async () => {
       throw new Error("Wallet session expired. Please sign in again.");
     }
 
-    const chain = resolveSdkChainOrThrow(session.chain.chainId);
+    const chain = activeChain;
+    if (!chain) {
+      throw new Error("No active chain selected. Please select a blockchain on the dashboard.");
+    }
     const fee = bulkTotalFeesUSD;
 
     const txHashes = await sendBulkUsdcTransfers({
@@ -440,7 +443,7 @@ const handleBulkConfirm = async () => {
 
     const lastTxHash = txHashes[txHashes.length - 1] ?? "";
     setBulkTxHash(lastTxHash);
-    setBulkTxUrl(getTxExplorerUrl(lastTxHash));
+    setBulkTxUrl(getTxExplorerUrl(lastTxHash, activeChainId));
     navigate("/activity");
 
     const dbRows = bulkTransferData.map((r, i) => ({

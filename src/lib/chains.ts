@@ -382,16 +382,50 @@ export function resolveTokenAddress(chainId?: string, blockchainName?: string): 
   return config.tokenAddress;
 }
 
+export function getTokenAddressesForChain(chainId: string): {
+  usdc: string | null;
+  usdt: string | null;
+} {
+  const entry = CHAIN_REGISTRY[chainId];
+  let usdc: string | null = ALPHA_USDC_TOKEN;
+  let usdt: string | null = ETH_USDT_TOKEN;
+
+  if (entry) {
+    if (entry.currency === "USDC") {
+      usdc = entry.tokenAddress;
+    } else if (entry.currency === "USDT") {
+      usdt = entry.tokenAddress;
+    }
+  }
+
+  if (chainId === CHAIN_IDS.BASE_SEPOLIA || chainId === CHAIN_IDS.BASE_MAINNET) {
+    usdc = BASE_USDC_TOKEN;
+  }
+
+  return { usdc, usdt };
+}
+
+export function getNativeCurrencySymbol(chainId: string, fallback = "ETH"): string {
+  const entry = CHAIN_REGISTRY[chainId];
+  if (entry?.displayName.toLowerCase().includes("polygon")) return "MATIC";
+  if (entry?.displayName.toLowerCase().includes("avalanche")) return "AVAX";
+  if (entry?.displayName.toLowerCase().includes("bsc")) return "BNB";
+  return fallback;
+}
+
 export function getTokenLabel(chainId?: string, blockchainName?: string): string {
   return getChainConfig(chainId, blockchainName).tokenLabel;
 }
 
-export function getConnectedNetworkDisplay(): {
+export function getConnectedNetworkDisplay(
+  chainId?: string,
+  blockchainName?: string,
+): {
   name: string;
   isBase: boolean;
   isPolygon?: boolean;
 } {
-  const config = getChainConfig();
+  const config = getChainConfig(chainId, blockchainName);
   return {
     name: config.displayName,
     isBase: config.isBase,
@@ -413,7 +447,10 @@ export const CHAIN_TO_ALCHEMY_NETWORK: Record<string, AlchemyNetwork> = Object.f
     .map(([chainId, entry]) => [chainId, entry.alchemyNetwork as AlchemyNetwork]),
 );
 
-/** Block explorer URL for a transaction hash on the connected chain. */
+/** CAIP-10 / EIP-155 format: eip155:chainId:address */
+export function getQrAddressFormat(address: string, chainId: string): string {
+  return address && chainId ? `eip155:${chainId}:${address}` : "";
+}
 export function getTxExplorerUrl(txHash: string, chainId?: string, blockchainName?: string): string {
   const id = chainId ?? (typeof window !== "undefined" ? localStorage.getItem("chainIdConfig") || "" : "");
   const chain = (blockchainName ?? (typeof window !== "undefined" ? localStorage.getItem("blockchainName") : "") ?? "BASE").toUpperCase();

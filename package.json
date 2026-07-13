@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
-    "@kalp_studio/tresori-sdk-js": "^1.4.3",
+    "@kalp_studio/tresori-sdk-js": "file:../../Users/hemant.bangari/Downloads/kalp_studio-tresori-sdk-js-1.4.3 2.tgz",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-aspect-ratio": "^1.1.7",

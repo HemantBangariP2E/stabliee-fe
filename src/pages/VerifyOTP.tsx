@@ -79,7 +79,7 @@ const VerifyOTP = () => {
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp.length !== 6 || !chain || !email) return;
+    if (otp.length !== 4 || !chain || !email) return;
 
     setVerifying(true);
     try {
@@ -216,9 +216,9 @@ const VerifyOTP = () => {
             </div>
 
             <div className="flex justify-center">
-              <InputOTP maxLength={6} value={otp} onChange={setOtp}>
+              <InputOTP maxLength={4} value={otp} onChange={setOtp}>
                 <InputOTPGroup className="gap-2">
-                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                  {[0, 1, 2, 3].map((i) => (
                     <InputOTPSlot key={i} index={i} className="w-12 h-12 text-xl rounded-xl border-2" />
                   ))}
                 </InputOTPGroup>
@@ -228,7 +228,7 @@ const VerifyOTP = () => {
             <Button
               type="submit"
               className="w-full h-12 rounded-xl text-base font-semibold"
-              disabled={otp.length !== 6 || verifying || !chain}
+              disabled={otp.length !== 4 || verifying || !chain}
             >
               {verifying ? "Verifying…" : "Verify OTP & Proceed"}
             </Button>

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 // import { parseUnits } from "ethers";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -7,20 +7,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronDown, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import baseLogo from "@/assets/base-logo.png";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/hooks/supabaseClient";
-import { GasFeeDisplay } from "@/components/GasFeeDisplay";
-import { isEthChain, getTokenLabel, getChainConfig, getTxExplorerUrl } from "@/lib/chains";
-import { fetchTokenBalance } from "@/lib/tokenBalance";
-import { getConnectedNetworkDisplay } from "@/lib/utils";
+import { getTxExplorerUrl } from "@/lib/chains";
+import { fetchChainBalances } from "@/lib/chainBalances";
 import { useTreSoriContext } from "@/context/TreSoriProvider";
 import { getMpcSession } from "@/lib/walletSession";
 import { resolveSdkChainOrThrow } from "@/lib/sdkChain";
-import { sendUsdcTransfer } from "@/lib/mpcTransfer";
+import { sendMpcTransfer, type TransferMode } from "@/lib/mpcTransfer";
+import { useSdkTransferFee } from "@/hooks/useSdkTransferFee";
+import { useActiveChain } from "@/hooks/useActiveChain";
+import { ChainListInstance } from "@kalp_studio/tresori-sdk-js";
 const mockBeneficiaries = [{
   id: 1,
   name: "TTT",
@@ -55,8 +58,18 @@ const mockBeneficiaries = [{
 const Transactions = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { tresori, mpcGaslessEnabled } = useTreSoriContext();
+  const { tresori, mpcGaslessEnabled, initialized } = useTreSoriContext();
+  const {
+    activeChain,
+    activeChainId: chainKey,
+    tokenLabel,
+    tokenAddress,
+    nativeSymbol,
+    networkDisplay: connectedNetwork,
+  } = useActiveChain();
    const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [nativeBalance, setNativeBalance] = useState<number | null>(null);
+  const [transferMode, setTransferMode] = useState<TransferMode>("gasless");
   const emailFromUrl = searchParams.get("email") || "";
   const [recipientEmail, setRecipientEmail] = useState(emailFromUrl);
   const [recipientWallet, setRecipientWallet] = useState("");
@@ -103,14 +116,30 @@ const Transactions = () => {
 
     const walletAddress = ownerAddress || "0x4c1a9cc6Cf1da9cc6Cf1daEDE3";
 
-  const tokenLabel = getTokenLabel();
-  const gasChain = isEthChain() ? "eth" : "base";
-  const connectedNetwork = getConnectedNetworkDisplay();
+  const estimateRecipient =
+    sendInputMode === "wallet" ? recipientWallet.trim() : recipientWallet.trim();
 
-  const chainKey =
-    typeof window !== "undefined"
-      ? `${localStorage.getItem("chainIdConfig") ?? ""}_${localStorage.getItem("blockchainName") ?? ""}`
-      : "";
+  const displayCurrency = transferMode === "native" ? nativeSymbol : tokenLabel;
+  const availableForMode = transferMode === "native" ? (nativeBalance ?? 0) : (usdcBalance ?? 0);
+
+  const [feeToRecipientEnabled, setFeeToRecipientEnabled] = useState(true);
+  const { platformFee: sdkPlatformFee, loading: feeLoading } = useSdkTransferFee({
+    tresori,
+    initialized,
+    fromAddress: ownerAddress,
+    toAddress: estimateRecipient,
+    amount,
+    chain: activeChain,
+    tokenAddress,
+    decimals: 6,
+    transferMode,
+    feeEnabled: feeToRecipientEnabled && transferMode === "gasless",
+  });
+  const feeToRecipient = feeToRecipientEnabled && transferMode === "gasless" ? sdkPlatformFee : 0;
+
+  useEffect(() => {
+    setTransferMode(mpcGaslessEnabled ? "gasless" : "native");
+  }, [mpcGaslessEnabled]);
 
   // Pre-fill email from URL params
   useEffect(() => {
@@ -124,32 +153,28 @@ const Transactions = () => {
   }, [emailFromUrl]);
 
     useEffect(() => {
-      if (!ownerAddress) return;
+      if (!ownerAddress || !initialized || !chainKey) return;
       let cancelled = false;
       (async () => {
         try {
-          const balance = await fetchTokenBalance(ownerAddress);
-          if (!cancelled) setUsdcBalance(balance);
+          const chain = ChainListInstance.ofChainId(chainKey);
+          if (!chain) return;
+          const balances = await fetchChainBalances(tresori, ownerAddress, chain);
+          if (!cancelled) {
+            setUsdcBalance(balances.usdc);
+            setNativeBalance(balances.native);
+          }
         } catch (e) {
-          console.error("Error fetching token balance:", e);
-          if (!cancelled) setUsdcBalance(null);
+          console.error("Error fetching balances:", e);
+          if (!cancelled) {
+            setUsdcBalance(null);
+            setNativeBalance(null);
+          }
         }
       })();
       return () => { cancelled = true; };
-    }, [ownerAddress, chainKey]);
+    }, [ownerAddress, chainKey, tresori, initialized]);
 
-  const feePercent = 0.01; // platform fee as 1% of gas (USD)
-  const networkFee = 1;
-  const [gasFeeUSD, setGasFeeUSD] = useState(0);
-  const [feeToRecipientEnabled, setFeeToRecipientEnabled] = useState(true);
-  const serviceFee = 0;
-  const platformFeeUSD = gasFeeUSD * feePercent;
-  /** Gas + platform fee sent on-chain to feeRecipient via MPC; 0 when toggle is off */
-  const feeToRecipient = feeToRecipientEnabled ? gasFeeUSD + platformFeeUSD : 0;
-
-  const handleGasUsdUpdate = useCallback((usd: number) => {
-    setGasFeeUSD(usd);
-  }, []);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -196,18 +221,18 @@ const Transactions = () => {
       });
       return;
     }
-    if (feeToRecipientEnabled && gasFeeUSD <= 0) {
+    if (feeToRecipientEnabled && transferMode === "gasless" && feeLoading) {
       toast({
-        title: "Network Fee Loading",
-        description: "Please wait for network gas fees to load before confirming.",
+        title: "Fee estimate loading",
+        description: "Please wait for the platform fee estimate.",
         variant: "destructive"
       });
       return;
     }
-    if (amountNum > availableBalance) {
+    if (amountNum > availableForMode) {
       toast({
         title: "Insufficient Balance",
-        description: `You cannot send more than your available balance of ${availableBalance.toLocaleString()} ${tokenLabel}`,
+        description: `You cannot send more than your available balance of ${availableForMode.toLocaleString()} ${displayCurrency}`,
         variant: "destructive"
       });
       return;
@@ -241,8 +266,7 @@ const Transactions = () => {
   };
   const getTotalAmount = () => {
     const amountNum = parseFloat(amount || "0") || 0;
-    // networkFee removed from displayed total (see commented Network Fee UI)
-    return (amountNum + feeToRecipient + serviceFee).toFixed(6);
+    return (amountNum + feeToRecipient).toFixed(6);
   };
   const handleFinalConfirm = () => {
     setShowConfirmDialog(false);
@@ -409,17 +433,18 @@ const insertTransaction = async ({
         throw new Error("Wallet session expired. Please sign in again.");
       }
 
-      const chain = resolveSdkChainOrThrow(session.chain.chainId);
-      const fee = feeToRecipientEnabled ? feeToRecipient : 0;
+      const chain = activeChain ?? resolveSdkChainOrThrow(chainKey);
+      const fee = feeToRecipientEnabled && transferMode === "gasless" ? feeToRecipient : 0;
 
-      const finalTxHash = await sendUsdcTransfer({
+      const finalTxHash = await sendMpcTransfer({
         tresori,
         session,
         chain,
         toAddress: recipientAddress,
         amount: amount.trim(),
         feeAmount: fee,
-        mpcGaslessEnabled,
+        mode: transferMode,
+        gasless: transferMode === "gasless",
       });
 
       await insertTransaction({
@@ -428,14 +453,14 @@ const insertTransaction = async ({
         amount: Number(amount),
         direction: "SENT",
         status: "SUCCESS",
-        gasFee: networkFee,
+        gasFee: feeToRecipient,
         ownerAddress: session.walletAddress,
         fromAddress: session.walletAddress,
         fromEmail: session.email,
         toEmail: sendInputMode === "email" ? recipientEmail : "",
       });
 
-      setUrl(getTxExplorerUrl(finalTxHash));
+      setUrl(getTxExplorerUrl(finalTxHash, chainKey));
       navigate("/activity");
     } catch (err) {
       console.log("Transaction error:", err);
@@ -580,6 +605,41 @@ const insertTransaction = async ({
       <div className="space-y-6 animate-fade-in">
         <Card className="p-6 rounded-2xl">
           <div>
+            <Tabs
+              value={transferMode}
+              onValueChange={(v) => setTransferMode(v as TransferMode)}
+              className="mb-6"
+            >
+              <TabsList className="grid w-full grid-cols-2 h-11 rounded-xl p-1">
+                <TabsTrigger value="native" className="rounded-lg">
+                  Native
+                </TabsTrigger>
+                <TabsTrigger
+                  value="gasless"
+                  disabled={!mpcGaslessEnabled}
+                  className="rounded-lg"
+                >
+                  Gasless
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {transferMode === "gasless" && mpcGaslessEnabled && (
+              <Badge variant="secondary" className="mb-4 rounded-full">
+                Gasless enabled — no gas required for USDC transfer
+              </Badge>
+            )}
+            {transferMode === "native" && (
+              <p className="text-xs text-muted-foreground mb-4">
+                Send {nativeSymbol} on the active chain. Gas is paid in native currency.
+              </p>
+            )}
+            {!mpcGaslessEnabled && (
+              <p className="text-xs text-muted-foreground mb-4">
+                Gasless is not enabled for this project. Use Native transfer.
+              </p>
+            )}
+
             {/* Recipient Input */}
             <div className="mb-6">
               {sendInputMode === "email" ? <>
@@ -665,23 +725,23 @@ const insertTransaction = async ({
                   <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#2775CA" }}>
                     <span className="text-white text-[10px] font-bold">$</span>
                   </div>
-                  <span className="font-medium text-sm">{tokenLabel}</span>
+                  <span className="font-medium text-sm">{displayCurrency}</span>
                 </div>
               </div>
               <div className="flex items-center justify-between mt-2">
-                <button type="button" onClick={() => { setAmount(availableBalance.toString()); setAmountError(""); }} className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer">
-                  Available: {usdcBalance !== null ? usdcBalance.toFixed(6) : "0.000000"} {tokenLabel}
+                <button type="button" onClick={() => { setAmount(availableForMode.toString()); setAmountError(""); }} className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer">
+                  Available: {availableForMode.toFixed(6)} {displayCurrency}
                 </button>
                 {amountError && <p className="text-xs text-destructive">{amountError}</p>}
               </div>
 
               {/* Live fee & total summary: Amount + Network Gas + Gas (1%) = Total - only when amount > 0 */}
-              {(parseFloat(amount || "0") || 0) > 0 && (
+              {(parseFloat(amount || "0") || 0) > 0 && transferMode === "gasless" && (
               <div className="mt-3 space-y-1 text-xs text-muted-foreground border border-border/60 rounded-xl px-3 py-2 bg-muted/30">
                 <div className="flex items-center justify-between">
                   <span>Amount</span>
                   <span className="text-foreground font-medium">
-                    {amount || "0"} {tokenLabel}
+                    {amount || "0"} {displayCurrency}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3 py-1">
@@ -691,8 +751,8 @@ const insertTransaction = async ({
                     </Label>
                     <span className="text-[10px] text-muted-foreground">
                       {feeToRecipientEnabled
-                        ? "Gas + platform fee sent to fee recipient"
-                        : "No fee sent to fee recipient (0)"}
+                        ? "Platform fee from SDK estimate"
+                        : "No platform fee charged"}
                     </span>
                   </div>
                   <Switch
@@ -702,43 +762,18 @@ const insertTransaction = async ({
                   />
                 </div>
                 {feeToRecipientEnabled ? (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span>Gas fee (to recipient)</span>
-                      <span className="text-foreground font-medium">
-                        ${gasFeeUSD.toFixed(6)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Platform fee (to recipient)</span>
-                      <span className="text-foreground font-medium">
-                        ${platformFeeUSD.toFixed(6)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between font-medium text-foreground">
-                      <span>Total fee to recipient</span>
-                      <span>${feeToRecipient.toFixed(6)}</span>
-                    </div>
-                  </>
+                  <div className="flex items-center justify-between">
+                    <span>Platform fee</span>
+                    <span className="text-foreground font-medium">
+                      {feeLoading ? "…" : `${feeToRecipient.toFixed(6)} ${tokenLabel}`}
+                    </span>
+                  </div>
                 ) : (
                   <div className="flex items-center justify-between">
-                    <span>Total fee to recipient</span>
-                    <span className="text-foreground font-medium">$0.000000</span>
+                    <span>Platform fee</span>
+                    <span className="text-foreground font-medium">0 {tokenLabel}</span>
                   </div>
                 )}
-                {/* <div className="flex items-center justify-between">
-                  <span>Network Fee</span>
-                  <span className="text-foreground font-medium">
-                    {networkFee.toFixed(6)} {tokenLabel}
-                  </span>
-                </div> */}
-                <div className="pt-2 mt-2 border-t border-border/40">
-                  <GasFeeDisplay
-                    chain={gasChain}
-                    className="text-xs"
-                    onGasUpdate={handleGasUsdUpdate}
-                  />
-                </div>
                 <div className="h-px bg-border/60 my-1" />
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-foreground">Total</span>
@@ -760,7 +795,7 @@ const insertTransaction = async ({
                 !!amountError ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
-                (feeToRecipientEnabled && gasFeeUSD <= 0) ||
+                (feeToRecipientEnabled && transferMode === "gasless" && feeLoading) ||
                 (sendInputMode === "email" ? !recipientEmail?.trim() : !recipientWallet?.trim())
               }
 >
@@ -874,50 +909,37 @@ const insertTransaction = async ({
                   </div>
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Transfer type</span>
+                    <span className="text-sm font-medium text-foreground capitalize">{transferMode}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Currency</span>
-                    <span className="text-sm font-medium text-foreground">{tokenLabel}</span>
+                    <span className="text-sm font-medium text-foreground">{displayCurrency}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Amount</span>
                     <span className="text-sm font-medium text-foreground">
-                      {amount || "0"} {tokenLabel}
+                      {amount || "0"} {displayCurrency}
                     </span>
                   </div>
+                  {transferMode === "gasless" && (
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Fee to recipient</span>
+                    <span className="text-sm text-muted-foreground">Platform fee</span>
                     <span className="text-sm text-foreground">
-                      ${feeToRecipient.toFixed(6)}
+                      {feeLoading
+                        ? "…"
+                        : `${feeToRecipient.toFixed(6)} ${tokenLabel}`}
                       {!feeToRecipientEnabled && (
                         <span className="text-xs text-muted-foreground ml-1">(disabled)</span>
                       )}
                     </span>
                   </div>
-                  {feeToRecipientEnabled && (
-                    <>
-                      <div className="flex justify-between items-center text-xs text-muted-foreground">
-                        <span>Includes gas fee</span>
-                        <span>${gasFeeUSD.toFixed(6)}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs text-muted-foreground">
-                        <span>Includes platform fee</span>
-                        <span>${platformFeeUSD.toFixed(6)}</span>
-                      </div>
-                    </>
                   )}
-                  {/* <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Network Fee</span>
-                    <span className="text-sm text-foreground">
-                      {networkFee.toFixed(6)} {tokenLabel}
-                    </span>
-                  </div> */}
-                  <div className="pt-1 pb-2">
-                    <GasFeeDisplay chain={gasChain} className="text-xs" />
-                  </div>
                   <div className="h-px bg-border" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold text-foreground">Total</span>
                     <span className="text-base font-bold text-foreground">
-                      {getTotalAmount()} {tokenLabel}
+                      {transferMode === "gasless" ? getTotalAmount() : (amount || "0")} {displayCurrency}
                     </span>
                   </div>
                 </div>

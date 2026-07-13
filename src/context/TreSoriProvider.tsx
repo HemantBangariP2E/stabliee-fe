@@ -1,11 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { useTreSori, type TreSoriContext } from "@/hooks/useTreSori";
 import { getDefaultChainId } from "@/lib/sdkChain";
+import { getActiveChainId, setActiveChain, isAuthenticated } from "@/lib/walletSession";
 import { ChainListInstance } from "@kalp_studio/tresori-sdk-js";
 import type { Chain } from "@kalp_studio/tresori-sdk-js";
 
 type TreSoriProviderValue = TreSoriContext & {
   selectChainById: (chainId: string) => void;
+  activateChain: (chain: Chain) => void;
 };
 
 const TreSoriContext = createContext<TreSoriProviderValue | null>(null);
@@ -26,8 +28,10 @@ export function TreSoriProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!sdk.initialized || sdk.chains.length === 0) return;
-    const defaultId = getDefaultChainId();
-    const match = ChainListInstance.ofChainId(defaultId);
+    const storedId = getActiveChainId();
+    const match = storedId
+      ? ChainListInstance.ofChainId(storedId)
+      : ChainListInstance.ofChainId(getDefaultChainId());
     if (match) {
       sdk.setSelectedChain(match);
     }
@@ -35,13 +39,22 @@ export function TreSoriProvider({ children }: { children: ReactNode }) {
 
   const selectChainById = (chainId: string) => {
     const chain = ChainListInstance.ofChainId(chainId);
-    if (chain) sdk.setSelectedChain(chain);
+    if (chain) {
+      sdk.setSelectedChain(chain);
+      if (isAuthenticated()) setActiveChain(chain);
+    }
+  };
+
+  const activateChain = (chain: Chain) => {
+    sdk.setSelectedChain(chain);
+    setActiveChain(chain);
   };
 
   const value = useMemo(
     () => ({
       ...sdk,
       selectChainById,
+      activateChain,
     }),
     [sdk],
   );

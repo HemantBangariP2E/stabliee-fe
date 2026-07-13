@@ -2,12 +2,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { TreSoriProvider } from "@/context/TreSoriProvider";
 
 import Index from "./pages/Index";
 import Login from "./pages/Login";
-import VerifyOTP from "./pages/VerifyOTP";
+// import VerifyOTP from "./pages/VerifyOTP";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import BulkSend from "./pages/BulkSend";
@@ -34,7 +34,7 @@ const App = () => {
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<Login />} />
-              <Route path="/verify-otp" element={<VerifyOTP />} />
+              <Route path="/verify-otp" element={<Navigate to="/login" replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/transactions" element={<Transactions />} />
               <Route path="/bulk-send" element={<BulkSend />} />

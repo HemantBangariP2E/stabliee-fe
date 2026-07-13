@@ -5,20 +5,14 @@ import { Copy, Wallet, ArrowLeft } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import QRCode from "react-qr-code";
 import baseLogo from "@/assets/base-logo.png";
-import { getConnectedNetworkDisplay, getTokenLabel } from "@/lib/chains";
-
-/** CAIP-10 / EIP-155 format: eip155:chainId:address - uses chainIdConfig from localStorage */
-const getQrAddressFormat = (address: string): string => {
-  const chainId = localStorage.getItem("chainIdConfig") || "8453";
-  return address ? `eip155:${chainId}:${address}` : "";
-};
+import { getQrAddressFormat } from "@/lib/chains";
+import { useActiveChain } from "@/hooks/useActiveChain";
 
 const Receive = () => {
   const navigate = useNavigate();
   const ownerAddress = localStorage.getItem("ownerAddress") || "";
-  const network = getConnectedNetworkDisplay();
-  const tokenLabel = getTokenLabel();
-  const qrValue = getQrAddressFormat(ownerAddress);
+  const { activeChainId, networkDisplay, tokenLabel, networkLabel } = useActiveChain();
+  const qrValue = getQrAddressFormat(ownerAddress, activeChainId);
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
@@ -43,12 +37,12 @@ const Receive = () => {
             <h2 className="text-xl font-semibold text-foreground mb-4">Receive {tokenLabel}</h2>
 
             <div className="flex items-center gap-2 px-4 py-2 bg-muted rounded-full mb-4">
-              {network.isBase ? (
+              {networkDisplay.isBase ? (
                 <img src={baseLogo} alt="Base" className="w-5 h-5 rounded-full" />
               ) : (
                 <div className="w-5 h-5 rounded-full bg-muted-foreground/20 flex items-center justify-center text-[10px] font-bold">Ξ</div>
               )}
-              <span className="text-sm font-medium text-foreground">{network.name}</span>
+              <span className="text-sm font-medium text-foreground">{networkLabel}</span>
             </div>
 
             <div className="p-4 bg-white rounded-2xl mb-6 shadow-lg w-full max-w-[280px] box-border">
@@ -84,7 +78,7 @@ const Receive = () => {
                 <p className="text-xs font-bold text-foreground mb-3">Important information</p>
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">
-                    • Only send {tokenLabel} on {network.name} to this address
+                    • Only send {tokenLabel} on {networkLabel} to this address
                   </p>
                   <p className="text-xs text-muted-foreground">• Other tokens & networks may result in loss of funds</p>
                   <p className="text-xs text-muted-foreground">• Scan this QR in any crypto wallet to pre-fill address and network</p>

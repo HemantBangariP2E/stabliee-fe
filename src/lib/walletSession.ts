@@ -32,11 +32,19 @@ export function persistMpcSession({
   localStorage.setItem(SESSION_KEYS.ownerAddress, walletAddress);
   localStorage.setItem(SESSION_KEYS.userShard, clientShare);
   localStorage.setItem(SESSION_KEYS.sessionId, sessionId);
+  setActiveChain(chain);
+}
+
+export function setActiveChain(chain: Chain): void {
   localStorage.setItem(SESSION_KEYS.chainIdConfig, chain.chainId);
   localStorage.setItem(SESSION_KEYS.blockchainName, chain.blockchain);
   localStorage.setItem(SESSION_KEYS.networkName, chain.network);
   localStorage.setItem(SESSION_KEYS.walletProvider, "mpc");
-  localStorage.setItem(SESSION_KEYS.nativeToken, resolveTokenAddress());
+  localStorage.setItem(SESSION_KEYS.nativeToken, resolveTokenAddress(chain.chainId, chain.blockchain));
+}
+
+export function getActiveChainId(): string {
+  return localStorage.getItem(SESSION_KEYS.chainIdConfig)?.trim() ?? "";
 }
 
 export function getMpcSession(): MpcSession | null {

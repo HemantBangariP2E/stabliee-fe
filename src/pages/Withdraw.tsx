@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { ChevronDown, ArrowLeft } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import baseLogo from "@/assets/base-logo.png";
-import { getConnectedNetworkDisplay } from "@/lib/utils";
+import { useActiveChain } from "@/hooks/useActiveChain";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const Withdraw = () => {
@@ -33,7 +33,7 @@ const Withdraw = () => {
 
   const networkFee = 0.01;
   const serviceFee = 0.00;
-  const connectedNetwork = getConnectedNetworkDisplay();
+  const { networkDisplay: connectedNetwork, networkLabel } = useActiveChain();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

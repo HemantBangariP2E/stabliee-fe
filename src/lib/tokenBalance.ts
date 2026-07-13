@@ -1,29 +1,15 @@
-import { getChainConfig, resolveTokenAddress } from "@/lib/chains";
-import { parseBalanceNumber } from "@/lib/formatBalance";
-import { apiPost, getKalpWalletApiKey, getWalletApiBase } from "@/lib/walletApi";
+import type { Chain, TreSori } from "@kalp_studio/tresori-sdk-js";
+import { fetchTokenBalance as fetchTokenBalanceSdk } from "@/lib/chainBalances";
+import { resolveSdkChainOrThrow } from "@/lib/sdkChain";
 
-/**
- * Fetch ERC-20 balance via `POST /v2/wallet/balance` (same as custodial-daaps).
- * Avoids public RPC rate limits on Polygon Amoy and other testnets.
- */
-export async function fetchTokenBalance(walletAddress: string): Promise<number> {
-  const config = getChainConfig();
-  const tokenAddress = resolveTokenAddress();
-  const chainId = parseInt(config.chainId, 10);
-  if (!Number.isFinite(chainId)) {
-    throw new Error(`Invalid chain ID: ${config.chainId}`);
-  }
+type TreSoriInstance = ReturnType<typeof TreSori>;
 
-  const data = await apiPost<unknown>(
-    "v2/wallet/balance",
-    {
-      address: walletAddress.trim(),
-      chainId,
-      currency: config.currency,
-      smartContractAddress: tokenAddress,
-    },
-    { apiKey: getKalpWalletApiKey(), baseUrl: getWalletApiBase() },
-  );
-
-  return parseBalanceNumber(data);
+/** Fetch USDC balance for the active (or given) chain via SDK only. */
+export async function fetchTokenBalance(
+  tresori: TreSoriInstance,
+  walletAddress: string,
+  chainId?: string,
+): Promise<number> {
+  const chain: Chain = resolveSdkChainOrThrow(chainId);
+  return fetchTokenBalanceSdk(tresori, walletAddress, chain);
 }
