@@ -109,17 +109,26 @@ function matchesChain(transfer: SdkNormalizedTransfer, chain: Chain): boolean {
   return true;
 }
 
+export function formatSdkChainLabel(transfer: SdkNormalizedTransfer): string {
+  if (transfer.blockchain && transfer.network) {
+    return `${transfer.blockchain} · ${transfer.network}`;
+  }
+  return "";
+}
+
 /** Fetch wallet transactions via `tresori.getWalletTransactions` (SDK only). */
 export async function fetchWalletTransactions(
   tresori: TreSoriInstance,
   args: {
-    chain: Chain;
+    chain?: Chain;
     walletAddress: string;
     limit?: number;
     maxPages?: number;
+    /** When true, only returns rows matching `chain` blockchain + network. */
+    filterByChain?: boolean;
   },
 ): Promise<SdkNormalizedTransfer[]> {
-  const { chain, walletAddress, limit = 100, maxPages = 50 } = args;
+  const { chain, walletAddress, limit = 100, maxPages = 50, filterByChain = false } = args;
   const address = walletAddress.trim();
   if (!address) return [];
 
@@ -139,7 +148,7 @@ export async function fetchWalletTransactions(
     totalPages = parsed.totalPages;
 
     for (const tx of parsed.data) {
-      if (!matchesChain(tx, chain)) continue;
+      if (filterByChain && chain && !matchesChain(tx, chain)) continue;
       const key = tx.hash.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);

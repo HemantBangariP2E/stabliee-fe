@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
 import { getTxExplorerUrl } from "@/lib/chains";
-import { fetchWalletTransactions, mapSdkTxStatus } from "@/lib/sdkTransactions";
+import { fetchWalletTransactions, formatSdkChainLabel, mapSdkTxStatus } from "@/lib/sdkTransactions";
 import { useTreSoriContext } from "@/context/TreSoriProvider";
 import { useActiveChain } from "@/hooks/useActiveChain";
 
@@ -29,6 +29,7 @@ type Transaction = {
   status: string;
   gasFee: string;
   explorerUrl?: string;
+  chainLabel?: string;
 };
 
 
@@ -74,7 +75,7 @@ async function fetchEmailsForAddresses(addresses: string[]): Promise<Map<string,
 
 const TransactionHistory = () => {
   const { tresori, initialized } = useTreSoriContext();
-  const { activeChain, activeChainId, tokenLabel, nativeSymbol } = useActiveChain();
+  const { activeChainId, tokenLabel, nativeSymbol } = useActiveChain();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,13 +92,12 @@ const TransactionHistory = () => {
     const fetchTransactions = async () => {
       const ownerAddress = localStorage.getItem("ownerAddress");
 
-      if (!ownerAddress || !initialized || !activeChain) return;
+      if (!ownerAddress || !initialized) return;
 
       setLoading(true);
 
       try {
         const sdkTransfers = await fetchWalletTransactions(tresori, {
-          chain: activeChain,
           walletAddress: ownerAddress,
         });
 
@@ -127,6 +127,7 @@ const TransactionHistory = () => {
             status: mapSdkTxStatus(t.status),
             gasFee: "N/A",
             explorerUrl: t.blockchainUrl,
+            chainLabel: formatSdkChainLabel(t),
           };
         });
 
@@ -146,7 +147,7 @@ const TransactionHistory = () => {
     };
 
     fetchTransactions();
-  }, [tresori, initialized, activeChain, activeChainId, tokenLabel, nativeSymbol]);
+  }, [tresori, initialized, tokenLabel, nativeSymbol]);
 
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
@@ -449,12 +450,15 @@ const TransactionHistory = () => {
 
     
                         <td className="py-3 px-4 text-sm align-middle">
-                          <div className="flex items-center gap-2">
-                            {tx.type === "Send" && <Send className="w-4 h-4 text-primary" />}
-                            {tx.type === "Receive" && <Send className="w-4 h-4 text-success rotate-180" />}
-                            {tx.type === "Buy" && <TrendingUp className="w-4 h-4 text-success" />}
-                            {tx.type === "Sell" && <TrendingDown className="w-4 h-4 text-destructive" />}
-                            <span>{tx.type}</span>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              {tx.type === "Send" && <Send className="w-4 h-4 text-primary" />}
+                              {tx.type === "Receive" && <Send className="w-4 h-4 text-success rotate-180" />}
+                              <span>{tx.type}</span>
+                            </div>
+                            {tx.chainLabel && (
+                              <span className="text-xs text-muted-foreground">{tx.chainLabel}</span>
+                            )}
                           </div>
                         </td>
                         
@@ -526,6 +530,11 @@ const TransactionHistory = () => {
                           <p className="text-xs text-muted-foreground truncate max-w-[180px]">
                             To: {tx.toEmail !== "N/A" ? tx.toEmail : "-"}
                           </p>
+                          {tx.chainLabel && (
+                            <p className="text-xs text-muted-foreground truncate max-w-[180px]">
+                              {tx.chainLabel}
+                            </p>
+                          )}
                           {tx.transactionId && (
                             <a
                               href={tx.explorerUrl ?? getExplorerUrl(tx.transactionId, activeChainId)}

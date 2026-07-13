@@ -50,7 +50,7 @@ export function useSdkWalletTransactions(
     void fetchWalletTransactions(tresori, {
       chain,
       walletAddress,
-      tokenAddress,
+      filterByChain: true,
     })
       .then((transactions) => {
         if (abortRef.current) return;
