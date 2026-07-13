@@ -1,135 +1,96 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import Logo from "@/components/Logo";
-import NewLogin from "./NewLogIn";
-import { Send, Zap, Globe, ArrowUpDown, Shield, ShieldCheck, Lock, CheckCircle2 } from "lucide-react";
-type BackupStep = "none" | "password" | "success";
+import { Send, Zap, Globe, ArrowUpDown, Shield } from "lucide-react";
+import { useTreSoriContext } from "@/context/TreSoriProvider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 const Login = () => {
   const [isSignup, setIsSignup] = useState(false);
   const [accountType, setAccountType] = useState<"personal" | "business">("personal");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [legalBusinessName, setLegalBusinessName] = useState("");
-  const [countryCode, setCountryCode] = useState("+1");
-  const [phoneNumber, setPhoneNumber] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [backupStep, setBackupStep] = useState<BackupStep>("none");
-  const [backupPassword, setBackupPassword] = useState("");
-  const [confirmBackupPassword, setConfirmBackupPassword] = useState("");
-  const countryCodes = [{
-    code: "+1",
-    country: "US",
-    flag: "🇺🇸"
-  }, {
-    code: "+44",
-    country: "UK",
-    flag: "🇬🇧"
-  }, {
-    code: "+91",
-    country: "IN",
-    flag: "🇮🇳"
-  }, {
-    code: "+49",
-    country: "DE",
-    flag: "🇩🇪"
-  }, {
-    code: "+33",
-    country: "FR",
-    flag: "🇫🇷"
-  }, {
-    code: "+81",
-    country: "JP",
-    flag: "🇯🇵"
-  }, {
-    code: "+86",
-    country: "CN",
-    flag: "🇨🇳"
-  }, {
-    code: "+61",
-    country: "AU",
-    flag: "🇦🇺"
-  }, {
-    code: "+55",
-    country: "BR",
-    flag: "🇧🇷"
-  }, {
-    code: "+52",
-    country: "MX",
-    flag: "🇲🇽"
-  }, {
-    code: "+971",
-    country: "UAE",
-    flag: "🇦🇪"
-  }, {
-    code: "+65",
-    country: "SG",
-    flag: "🇸🇬"
-  }, {
-    code: "+82",
-    country: "KR",
-    flag: "🇰🇷"
-  }, {
-    code: "+27",
-    country: "ZA",
-    flag: "🇿🇦"
-  }, {
-    code: "+234",
-    country: "NG",
-    flag: "🇳🇬"
-  }];
+  const [selectedBlockchain, setSelectedBlockchain] = useState("");
+  const [selectedNetwork, setSelectedNetwork] = useState("");
+
   const navigate = useNavigate();
+  const { chains, selectedChain, setSelectedChain, initialized, loading } = useTreSoriContext();
+
+  const blockchains = useMemo(() => {
+    const set = new Set(chains.map((c) => c.blockchain));
+    return [...set].sort();
+  }, [chains]);
+
+  const networks = useMemo(() => {
+    if (!selectedBlockchain) return [];
+    return chains.filter((c) => c.blockchain === selectedBlockchain);
+  }, [chains, selectedBlockchain]);
+
+  useEffect(() => {
+    if (!selectedChain) return;
+    setSelectedBlockchain(selectedChain.blockchain);
+    setSelectedNetwork(selectedChain.network);
+  }, [selectedChain]);
+
+  const handleBlockchainChange = (blockchain: string) => {
+    setSelectedBlockchain(blockchain);
+    const first = chains.find((c) => c.blockchain === blockchain);
+    if (first) {
+      setSelectedNetwork(first.network);
+      setSelectedChain(first);
+    }
+  };
+
+  const handleNetworkChange = (network: string) => {
+    setSelectedNetwork(network);
+    const chain = chains.find(
+      (c) => c.blockchain === selectedBlockchain && c.network === network,
+    );
+    if (chain) setSelectedChain(chain);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedChain) return;
+
     if (isSignup) {
-      // Require name for all account types
-      if (!name) {
-        return;
-      }
-      // Additionally require business name for business accounts
-      if (accountType === "business" && !legalBusinessName) {
-        return;
-      }
+      if (!name) return;
+      if (accountType === "business" && !legalBusinessName) return;
       if (email && agreedToTerms) {
-        // Navigate to OTP screen for signup
         navigate("/verify-otp", {
           state: {
             email,
             name,
-            isSignup: true
-          }
+            isSignup: true,
+            chainId: selectedChain.chainId,
+          },
         });
       }
-    } else {
-      if (email) {
-        navigate("/verify-otp", {
-          state: {
-            email
-          }
-        });
-      }
+    } else if (email) {
+      navigate("/verify-otp", {
+        state: {
+          email,
+          chainId: selectedChain.chainId,
+        },
+      });
     }
   };
-  const handleBackupConfirm = () => {
-    if (backupPassword && backupPassword === confirmBackupPassword) {
-      setBackupStep("success");
-    }
-  };
-  const handleBackupCancel = () => {
-    setBackupStep("none");
-    setBackupPassword("");
-    setConfirmBackupPassword("");
-  };
-  const handleBackupComplete = () => {
-    navigate("/dashboard");
-  };
-  return <div className="min-h-screen flex">
-      {/* Left Panel - Branding */}
+
+  return (
+    <div className="min-h-screen flex">
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-zinc-100 via-zinc-50 to-white items-center justify-center p-12 relative overflow-hidden">
-        {/* Background decorative elements */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-zinc-200/50 rounded-full blur-3xl" />
           <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-zinc-300/30 rounded-full blur-3xl" />
@@ -144,34 +105,24 @@ const Login = () => {
           </div>
 
           <h1 className="text-4xl font-bold text-zinc-900 mb-4 leading-tight">
-            Your digital wallet,<br />
+            Your digital wallet,
+            <br />
             <span className="text-zinc-500">across borders</span>
           </h1>
-          
-          <p className="text-zinc-500 text-base mb-10">
-            Send, receive, and manage Digital money
-          </p>
-          
+
+          <p className="text-zinc-500 text-base mb-10">Send, receive, and manage Digital money</p>
+
           <div className="space-y-4 text-left">
-            {[{
-            icon: Send,
-            text: "Send to many",
-            desc: "Bulk transfers made simple"
-          }, {
-            icon: Zap,
-            text: "Get paid instantly",
-            desc: "Real-time settlements"
-          }, {
-            icon: Globe,
-            text: "Use your local money",
-            desc: "Multi-currency support"
-          }, {
-            icon: ArrowUpDown,
-            text: "Easy funding & withdrawals",
-            desc: "On/off ramp in seconds"
-          }].map((item, index) => <div key={index} className="flex items-center gap-4 bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-zinc-200 hover:bg-white hover:shadow-sm transition-all duration-300 group cursor-default" style={{
-            animationDelay: `${index * 100}ms`
-          }}>
+            {[
+              { icon: Send, text: "Send to many", desc: "Bulk transfers made simple" },
+              { icon: Zap, text: "Get paid instantly", desc: "Real-time settlements" },
+              { icon: Globe, text: "Use your local money", desc: "Multi-currency support" },
+              { icon: ArrowUpDown, text: "Easy funding & withdrawals", desc: "On/off ramp in seconds" },
+            ].map((item, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-4 bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-zinc-200 hover:bg-white hover:shadow-sm transition-all duration-300 group cursor-default"
+              >
                 <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center flex-shrink-0 group-hover:bg-zinc-200 transition-colors">
                   <item.icon className="w-5 h-5 text-zinc-700" />
                 </div>
@@ -179,7 +130,8 @@ const Login = () => {
                   <p className="text-zinc-900 font-semibold text-sm">{item.text}</p>
                   <p className="text-zinc-500 text-xs">{item.desc}</p>
                 </div>
-              </div>)}
+              </div>
+            ))}
           </div>
 
           <div className="mt-12 flex items-center justify-center gap-2">
@@ -189,12 +141,138 @@ const Login = () => {
         </div>
       </div>
 
-      {/* Right Panel - Login/Signup Form or Backup Flow */}
- 
-
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-card">
-            <NewLogin />
+        <div className="w-full max-w-md space-y-8">
+          <div className="text-center">
+            <div className="flex justify-center mb-6">
+              <Logo size="lg" />
+            </div>
+            <h2 className="text-2xl font-bold text-foreground">
+              {isSignup ? "Create your account" : "Welcome back"}
+            </h2>
+            <p className="text-muted-foreground mt-1">
+              {isSignup ? "Sign up with your email" : "Sign in with your email"}
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isSignup && (
+              <div className="space-y-2">
+                <Label htmlFor="name">Full name</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="h-12 rounded-xl"
+                  placeholder="Your name"
+                  required
+                />
+              </div>
+            )}
+
+            {isSignup && accountType === "business" && (
+              <div className="space-y-2">
+                <Label htmlFor="business">Legal business name</Label>
+                <Input
+                  id="business"
+                  value={legalBusinessName}
+                  onChange={(e) => setLegalBusinessName(e.target.value)}
+                  className="h-12 rounded-xl"
+                  placeholder="Business name"
+                  required
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-12 rounded-xl"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Blockchain</Label>
+              <Select
+                value={selectedBlockchain}
+                onValueChange={handleBlockchainChange}
+                disabled={!initialized || blockchains.length === 0}
+              >
+                <SelectTrigger className="h-12 rounded-xl">
+                  <SelectValue placeholder={loading ? "Loading networks…" : "Select blockchain"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {blockchains.map((b) => (
+                    <SelectItem key={b} value={b}>
+                      {b}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Network</Label>
+              <Select
+                value={selectedNetwork}
+                onValueChange={handleNetworkChange}
+                disabled={!selectedBlockchain || networks.length === 0}
+              >
+                <SelectTrigger className="h-12 rounded-xl">
+                  <SelectValue placeholder="Select network" />
+                </SelectTrigger>
+                <SelectContent>
+                  {networks.map((c) => (
+                    <SelectItem key={c.id} value={c.network}>
+                      {c.network} (chain {c.chainId})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {isSignup && (
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="terms"
+                  checked={agreedToTerms}
+                  onCheckedChange={(v) => setAgreedToTerms(v === true)}
+                />
+                <Label htmlFor="terms" className="text-sm font-normal">
+                  I agree to the terms and conditions
+                </Label>
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              className="w-full h-12 rounded-xl text-base font-semibold"
+              disabled={!email || !selectedChain || (isSignup && !agreedToTerms)}
+            >
+              Continue
+            </Button>
+          </form>
+
+          <p className="text-center text-sm text-muted-foreground">
+            {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
+            <button
+              type="button"
+              onClick={() => setIsSignup(!isSignup)}
+              className="text-foreground font-medium hover:underline"
+            >
+              {isSignup ? "Sign in" : "Sign up"}
+            </button>
+          </p>
+        </div>
       </div>
-    </div>;
+    </div>
+  );
 };
+
 export default Login;

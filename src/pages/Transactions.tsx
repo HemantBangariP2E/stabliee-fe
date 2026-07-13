@@ -14,9 +14,13 @@ import baseLogo from "@/assets/base-logo.png";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/hooks/supabaseClient";
 import { GasFeeDisplay } from "@/components/GasFeeDisplay";
-import { isEthChain, getTokenLabel, getChainConfig, getTxExplorerUrl, resolveTokenAddress } from "@/lib/chains";
+import { isEthChain, getTokenLabel, getChainConfig, getTxExplorerUrl } from "@/lib/chains";
 import { fetchTokenBalance } from "@/lib/tokenBalance";
 import { getConnectedNetworkDisplay } from "@/lib/utils";
+import { useTreSoriContext } from "@/context/TreSoriProvider";
+import { getMpcSession } from "@/lib/walletSession";
+import { resolveSdkChainOrThrow } from "@/lib/sdkChain";
+import { sendUsdcTransfer } from "@/lib/mpcTransfer";
 const mockBeneficiaries = [{
   id: 1,
   name: "TTT",
@@ -51,6 +55,7 @@ const mockBeneficiaries = [{
 const Transactions = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { tresori, mpcGaslessEnabled } = useTreSoriContext();
    const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
   const emailFromUrl = searchParams.get("email") || "";
   const [recipientEmail, setRecipientEmail] = useState(emailFromUrl);
@@ -69,8 +74,7 @@ const Transactions = () => {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [account] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
-    const eth = (window as any).ethereum;
-    return localStorage.getItem("ownerAddress") || (eth && eth.selectedAddress) || null;
+    return localStorage.getItem("ownerAddress");
   });
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
@@ -398,164 +402,46 @@ const insertTransaction = async ({
 
     setLoading(true);
     const amountToSendVal = parseFloat(amount);
-    console.log("TYPED:", { recipient: sendInputMode === "email" ? recipientEmail : recipientWallet, amount });
-    console.log("SENDING:", { recipientAddress, amount: amountToSendVal });
-    // const amountInWei = parseUnits(amount, 18).toString();
-    console.log("wallet type====:", localStorage.getItem('walletType'));
 
-    if (localStorage.getItem("walletProvider") == "metamask") {
-      try {
-        const txParams = {
-          from: account,
-          to: recipientEmail,
-        
-        }
-
-        console.log("Sending transaction with params:", txParams);
-
-        //@ts-ignore
-        const hash = await window.exectueMetamaskTxn('NONPAYABLE',localStorage.getItem('nativeToken'),[
-          {
-            "name": "transfer",
-            "type": "function",
-            "stateMutability": "nonpayable",
-            "inputs": [
-              { "name": "to", "type": "address" },
-              { "name": "value", "type": "uint256" }
-            ],
-            "outputs": [{ "type": "bool" }]
-          }
-        ],'transfer',[
-          recipientAddress
-        ]);
-
-        console.log("Transaction hash:", hash);
- const pendingHash = "PENDING_" + Date.now();
-
-await insertTransaction({
-  txHash: pendingHash,
-  to: recipientAddress,
-  amount: Number(amount),
-  direction: "SENT",
-  status: "PENDING",
-  gasFee: networkFee,
-  
-});
-
-// after getting real hash
-const finalHash = hash.txHash ? hash.txHash : hash.blockHash;
-
-await supabase
-  .from("transactions")
-  .update({
-    tx_hash: finalHash,
-    status: "SUCCESS",
-  })
-  .eq("tx_hash", pendingHash);
-        // setRecipient()
-        // setAmount('')
-        const txHashForUrl = hash.txHash ? hash.txHash : hash.blockHash;
-        setUrl(getTxExplorerUrl(txHashForUrl));
-        navigate("/activity");
-      } catch (err) {
-        console.log("Transaction error:", err);
-        setError(getSendErrorMessage(err, recipientVerifiedByEmail))
-      } finally {
-        setLoading(false)
+    try {
+      const session = getMpcSession();
+      if (!session) {
+        throw new Error("Wallet session expired. Please sign in again.");
       }
-    } else {
-      try {
-        const fee = feeToRecipientEnabled ? feeToRecipient : 0;
-        const feeChainId = localStorage.getItem("chainIdConfig") || "";
-        const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
-        const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
-        const feeRecipient = isEthChainForFee
-          ? "0xaAEd3fCdDEDA26F9AD0582698d9Be012e48D88aF"
-          : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
-        const tokenContractAddress = resolveTokenAddress();
-        const win = window as any;
-        let executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
-        if (typeof executeMPCTxn !== 'function') {
-          await new Promise((r) => setTimeout(r, 1500));
-          executeMPCTxn = win.executeMPCTokenTxn ?? win.exectueMPCTokenTxn;
-        }
-        if (typeof executeMPCTxn !== 'function') {
-          throw new Error('Embedded wallet is not ready. Refresh the page and try again, or sign in again from the login page.');
-        }
-    
-        const amountToSend = amount.trim();
 
-        console.log("[MPC-TXN] chain / token config:", {
-          chainId: localStorage.getItem("chainIdConfig"),
-          nativeToken: localStorage.getItem("nativeToken"),
-          resolvedTokenAddress: tokenContractAddress,
-          blockchainName,
-        });
+      const chain = resolveSdkChainOrThrow(session.chain.chainId);
+      const fee = feeToRecipientEnabled ? feeToRecipient : 0;
 
-        console.log("[MPC-TXN] fee to recipient:", {
-          feeToRecipientEnabled,
-          feeToRecipient,
-          gasFeeUSD,
-          platformFeeUSD,
-        });
+      const finalTxHash = await sendUsdcTransfer({
+        tresori,
+        session,
+        chain,
+        toAddress: recipientAddress,
+        amount: amount.trim(),
+        feeAmount: fee,
+        mpcGaslessEnabled,
+      });
 
-        const hash = await executeMPCTxn(
-  localStorage.getItem("ownerAddress"),
-  recipientAddress,
-  amountToSend,
-  parseInt(localStorage.getItem("chainIdConfig")),
-  localStorage.getItem("networkName"),
-  blockchainName,
-  tokenContractAddress,
-  localStorage.getItem("userShard"),
-  localStorage.getItem("userIdentifier"),
-  fee,
-  feeRecipient
-);
+      await insertTransaction({
+        txHash: finalTxHash,
+        to: recipientAddress,
+        amount: Number(amount),
+        direction: "SENT",
+        status: "SUCCESS",
+        gasFee: networkFee,
+        ownerAddress: session.walletAddress,
+        fromAddress: session.walletAddress,
+        fromEmail: session.email,
+        toEmail: sendInputMode === "email" ? recipientEmail : "",
+      });
 
-   console.log("Transaction hash is :", hash);
-
-// Handle approval flow
-if (hash?.result?.approvalId) {
-  toast({
-    title: "Approval Required",
-    description: "Waiting for approval",
-  });
-
-  setLoading(false);
-  return;
-}
-
-const finalTxHash =
-  hash?.result?.txHash ??
-  hash?.txHash ??
-  (typeof hash === "string" ? hash : null);
-
-if (!finalTxHash) {
-  throw new Error("Transaction completed but no transaction hash was returned.");
-}
-
-await insertTransaction({
-  txHash: finalTxHash,
-  to: recipientAddress,
-  amount: Number(amount),
-  direction: "SENT",
-  status: "SUCCESS",
-  gasFee: networkFee,
-  ownerAddress: localStorage.getItem("ownerAddress") || "",
-  fromAddress: localStorage.getItem("ownerAddress") || "",
-  fromEmail: localStorage.getItem("userIdentifier") || "",
-  toEmail: sendInputMode === "email" ? recipientEmail : "",
-});
-
-        setUrl(getTxExplorerUrl(finalTxHash));
-        navigate("/activity");
-      } catch (err) {
-        console.log("Transaction error:", err);
-        setError(getSendErrorMessage(err, recipientVerifiedByEmail))
-      } finally {
-        setLoading(false) 
-      }
+      setUrl(getTxExplorerUrl(finalTxHash));
+      navigate("/activity");
+    } catch (err) {
+      console.log("Transaction error:", err);
+      setError(getSendErrorMessage(err, recipientVerifiedByEmail));
+    } finally {
+      setLoading(false);
     }
   }
 

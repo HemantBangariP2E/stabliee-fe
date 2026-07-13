@@ -39,7 +39,7 @@ export function getKalpWalletApiKey(): string {
   }
   const fromEnv = import.meta.env.VITE_KALP_WALLET_API_KEY as string | undefined;
   if (fromEnv?.trim()) return fromEnv.trim();
-  return "cce4c35335c02307321678e3a8374bd2cf477a188850d253ace283690a827919";
+  return "";
 }
 
 export async function apiPost<T>(

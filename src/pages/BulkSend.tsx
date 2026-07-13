@@ -6,7 +6,11 @@ import { Card } from "@/components/ui/card";
 import { Download, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import baseLogo from "@/assets/base-logo.png";
-import { getChainConfig, getConnectedNetworkDisplay, resolveTokenAddress } from "@/lib/chains";
+import { getChainConfig, getConnectedNetworkDisplay, getTxExplorerUrl } from "@/lib/chains";
+import { useTreSoriContext } from "@/context/TreSoriProvider";
+import { getMpcSession } from "@/lib/walletSession";
+import { resolveSdkChainOrThrow } from "@/lib/sdkChain";
+import { sendBulkUsdcTransfers } from "@/lib/mpcTransfer";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/hooks/supabaseClient";
@@ -94,11 +98,13 @@ function formatExactAmount(n: number): string {
 
 const BulkSend = () => {
   const navigate = useNavigate();
+  const { tresori, mpcGaslessEnabled } = useTreSoriContext();
   const [bulkSendMode, setBulkSendMode] = useState<"email" | "wallet">("email");
   const [bulkTransferData, setBulkTransferData] = useState<BulkTransferRow[]>([]);
   const [showBulkPreview, setShowBulkPreview] = useState(false);
   const [showBulkConfirmDialog, setShowBulkConfirmDialog] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
   const [bulkTxHash, setBulkTxHash] = useState("");
   const [bulkTxUrl, setBulkTxUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -395,6 +401,7 @@ const handleBulkConfirm = async () => {
     }
 
     setBulkLoading(true);
+    setBulkProgress(null);
 
     const formattedRecipients = bulkTransferData.map((r) => {
       const amountToSend = (r.amount ?? "").toString().trim();
@@ -413,60 +420,48 @@ const handleBulkConfirm = async () => {
       };
     });
 
-    // 🔗 Blockchain bulk call
-    // const recipientWallet = "0xce938A9C74374b5B4863A9026c92D5Aa92b02332";
+    const session = getMpcSession();
+    if (!session) {
+      throw new Error("Wallet session expired. Please sign in again.");
+    }
+
+    const chain = resolveSdkChainOrThrow(session.chain.chainId);
     const fee = bulkTotalFeesUSD;
 
-    const feeChainId = localStorage.getItem("chainIdConfig") || "";
-    const blockchainName = (localStorage.getItem('blockchainName') || '').toUpperCase();
-    const isEthChainForFee = blockchainName === "ETH" || feeChainId === "1" || feeChainId === "11155111";
-    const recipientWallet = isEthChainForFee
-      ? "0xaAEd3fCdDEDA26F9AD0582698d9Be012e48D88aF"
-      : "0x3eF4Bd3948976bD4Af03003E5bC0e109E016d563";
-    const tokenContractAddress = resolveTokenAddress();
-    // @ts-ignore
-    const hash = await window.exectueMPCBulkTokenTxn(
-      ownerAddress,
-      formattedRecipients,
-      parseInt(localStorage.getItem("chainIdConfig")),
-      tokenContractAddress,
-      recipientWallet,
-      fee
-    );
+    const txHashes = await sendBulkUsdcTransfers({
+      tresori,
+      session,
+      chain,
+      recipients: formattedRecipients,
+      feeAmount: fee,
+      mpcGaslessEnabled,
+      onProgress: setBulkProgress,
+    });
 
-    const txHash = hash.txHash;
-    setBulkTxHash(txHash);
-    const chain = (localStorage.getItem("blockchainName") || "BASE").toUpperCase();
-    const explorerChainId = localStorage.getItem("chainIdConfig") || "";
-    const isMainnet = explorerChainId === "1" || explorerChainId === "8453";
-    const url =
-      chain === "ETH" || explorerChainId === "11155111" || explorerChainId === "1"
-        ? (isMainnet ? `https://etherscan.io/tx/${txHash}` : `https://sepolia.etherscan.io/tx/${txHash}`)
-        : (isMainnet ? `https://basescan.org/tx/${txHash}` : `https://sepolia.basescan.org/tx/${txHash}`);
-    setBulkTxUrl(url);
+    const lastTxHash = txHashes[txHashes.length - 1] ?? "";
+    setBulkTxHash(lastTxHash);
+    setBulkTxUrl(getTxExplorerUrl(lastTxHash));
     navigate("/activity");
 
-    // 🧾 Prepare DB rows (ONE PER RECIPIENT)
     const dbRows = bulkTransferData.map((r, i) => ({
-      tx_hash: txHash, // same hash for bulk
+      tx_hash: txHashes[i] ?? lastTxHash,
       owner_address: ownerAddress,
       from_address: ownerAddress,
       to_address: r.walletAddress,
       amount: formattedRecipients[i].amount,
       token_symbol: "USDC",
-      direction: "SENT", // bulk send = debit
+      direction: "SENT",
       status: "SUCCESS",
-      gas_fee: fee,
+      gas_fee: i === 0 ? fee : 0,
       from_email: localStorage.getItem("userIdentifier") || "",
       to_email: r.recipient,
     }));
 
-    // 💾 Insert all rows in Supabase
     await insertTransactionsBulk(dbRows);
 
     toast({
       title: "Bulk Transfer Completed",
-      description: `Stored ${dbRows.length} transactions`,
+      description: `Sent ${dbRows.length} transfers`,
     });
   } catch (err) {
     console.error("Bulk Transaction error:", err);
@@ -483,6 +478,7 @@ const handleBulkConfirm = async () => {
     });
   } finally {
     setBulkLoading(false);
+    setBulkProgress(null);
   }
 };
   const handleBulkFinalConfirm = () => {
@@ -663,7 +659,11 @@ const handleBulkConfirm = async () => {
                     bulkTransferData.length === 0
                   }
                   className="w-full sm:w-auto h-12 px-12 rounded-xl text-base font-semibold">
-                  {bulkLoading ? "Processing..." : "Confirm Bulk Transfer"}
+                  {bulkLoading
+                    ? bulkProgress
+                      ? `Sending ${bulkProgress.current} of ${bulkProgress.total}…`
+                      : "Processing..."
+                    : "Confirm Bulk Transfer"}
                 </Button>
 
                 {bulkTxHash && (
