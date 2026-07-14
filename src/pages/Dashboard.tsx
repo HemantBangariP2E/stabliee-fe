@@ -1,75 +1,127 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Wallet, Send, Download, Users, Eye, EyeOff, Code, Copy, Mail, Plus, ArrowDownToLine, Building2, Smartphone } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Wallet, Send, Download, Eye, EyeOff, Copy, Mail, Building2, Smartphone, RefreshCw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import QRCode from "react-qr-code";
-import usdcLogo from "@/assets/usdc-logo.svg";
-import eurcLogo from "@/assets/eurc-logo.svg";
 import baseLogo from "@/assets/base-logo.png";
-import { useEffect } from "react";
 import { supabase } from "@/hooks/supabaseClient";
 import { useAlchemyTransactions } from "@/hooks/useAlchemyTransactions";
-import { getAlchemyNetwork, getChainConfig, getConnectedNetworkDisplay, getTokenLabel } from "@/lib/chains";
-import { fetchTokenBalance } from "@/lib/tokenBalance";
+import { getAlchemyNetwork, getChainConfig, getConnectedNetworkDisplay, getTokenLabel, setActiveChain, getActiveChain, SUPPORTED_CHAINS } from "@/lib/chains";
+import { fetchTokenBalance, fetchTokenBalanceForChain } from "@/lib/tokenBalance";
+import { useEnabledChains } from "@/hooks/useEnabledChains";
+import type { ChainEntry } from "@/lib/walletApi";
 
-const chartData = [{
-  date: "30 Nov",
-  value: 0
-}, {
-  date: "01 Dec",
-  value: 0.3
-}, {
-  date: "02 Dec",
-  value: 0.8
-}, {
-  date: "03 Dec",
-  value: 0.2
-}, {
-  date: "04 Dec",
-  value: 0.1
-}, {
-  date: "05 Dec",
-  value: 0
-}, {
-  date: "06 Dec",
-  value: 0
-}];
 type MoneyAction = "add" | "withdraw";
 type SelectedCoin = "USDC" | "EURC";
+
+// ── chain-key helper (no arrow-function import clash) ──────────────────────
+function chainTabKey(c: ChainEntry) {
+  return `${c.blockchain}::${c.network}::${c.chainId}`;
+}
 
 const Dashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const userIdentifier = localStorage.getItem("userIdentifier") || undefined;
   const ownerAddress = localStorage.getItem("ownerAddress") || undefined;
-  const connectedTokenLabel = getTokenLabel();
-  const connectedNetwork = getConnectedNetworkDisplay();
 
   const [totalSent, setTotalSent] = useState(0);
   const [totalReceived, setTotalReceived] = useState(0);
-  const [totalBalance, setTotalBalance] = useState(0);
-  const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
-
-  const userName = location.state?.name || "User";
   const [hideNumbers, setHideNumbers] = useState(false);
   const [receiveModalOpen, setReceiveModalOpen] = useState(false);
   const [moneyModalOpen, setMoneyModalOpen] = useState(false);
   const [moneyAction, setMoneyAction] = useState<MoneyAction>("add");
   const [selectedCoin, setSelectedCoin] = useState<SelectedCoin>("USDC");
-  const email = "user@stabilee.com";
-  const walletAddress = ownerAddress || "0x4c1a9cc6Cf1da9cc6Cf1daEDE3";
+  const email = localStorage.getItem("userIdentifier") || "user@stabilee.com";
+  const walletAddress = ownerAddress || "";
 
+  // ── multi-chain state ─────────────────────────────────────────────────────
+  const { chains, mainnetChains, testnetChains, loading: chainsLoading } = useEnabledChains();
+  const [networkTab, setNetworkTab] = useState<"MAINNET" | "TESTNET">("MAINNET");
+
+  // Active chain — reads localStorage, reacts to chainChanged events
+  const [activeChainEntry, setActiveChainEntry] = useState<ChainEntry | null>(() => {
+    const ac = getActiveChain();
+    if (!ac) return null;
+    // try to find in chains cache (may be empty on first render)
+    return null;
+  });
+
+  // Sync activeChainEntry once chains are loaded
   useEffect(() => {
-    if (!ownerAddress) {
-      navigate("/login", { replace: true });
-      return;
+    if (!chains.length) return;
+    const ac = getActiveChain();
+    if (ac) {
+      const found = chains.find(
+        (c) => c.chainId === ac.chainId && c.network === ac.network
+      );
+      setActiveChainEntry(found ?? chains[0]);
+    } else {
+      setActiveChainEntry(chains[0]);
     }
-  }, [ownerAddress, navigate]);
+  }, [chains]);
+
+  // Per-chain balance map: key → number | null | "loading"
+  const [balanceMap, setBalanceMap] = useState<Record<string, number | null | "loading">>({});
+  const fetchedRef = useRef<Set<string>>(new Set());
+
+  const fetchBalanceForChain = useCallback(async (chain: ChainEntry) => {
+    if (!ownerAddress) return;
+    const key = chainTabKey(chain);
+    if (fetchedRef.current.has(key)) return;
+    fetchedRef.current.add(key);
+    // Mark as loading immediately so the render never sees undefined
+    setBalanceMap((prev) => ({ ...prev, [key]: "loading" }));
+    try {
+      const bal = await fetchTokenBalanceForChain(ownerAddress, chain);
+      setBalanceMap((prev) => ({ ...prev, [key]: typeof bal === "number" ? bal : null }));
+    } catch {
+      setBalanceMap((prev) => ({ ...prev, [key]: null }));
+    }
+  }, [ownerAddress]);
+
+  // Fetch balance when chains load or tab switches
+  useEffect(() => {
+    const tabChains = networkTab === "MAINNET" ? mainnetChains : testnetChains;
+    tabChains.forEach((c) => fetchBalanceForChain(c));
+  }, [networkTab, mainnetChains, testnetChains, fetchBalanceForChain]);
+
+  // Also fetch for active chain immediately
+  useEffect(() => {
+    if (activeChainEntry) fetchBalanceForChain(activeChainEntry);
+  }, [activeChainEntry, fetchBalanceForChain]);
+
+  const handleSwitchActiveChain = useCallback((chain: ChainEntry) => {
+    // Match to SUPPORTED_CHAINS for setActiveChain helper
+    const sc = SUPPORTED_CHAINS.find(
+      (s) => s.chainId === chain.chainId && s.network === chain.network
+    ) ?? {
+      chainId: chain.chainId,
+      blockchain: chain.blockchain,
+      network: chain.network,
+      displayName: `${chain.blockchain} ${chain.network}`,
+      currency: chain.currency,
+      explorerUrl: chain.explorerUrl,
+      logo: chain.logo,
+      isMainnet: chain.network.toUpperCase().includes("MAIN"),
+    };
+    setActiveChain(sc);
+    setActiveChainEntry(chain);
+    toast({ title: "Network switched", description: `Active: ${sc.displayName}` });
+  }, []);
+
+  const handleRefreshBalance = useCallback((chain: ChainEntry) => {
+    const key = chainTabKey(chain);
+    fetchedRef.current.delete(key);
+    fetchBalanceForChain(chain);
+  }, [fetchBalanceForChain]);
+
+  // ── active chain for legacy balance display ────────────────────────────────
+  const connectedTokenLabel = getTokenLabel();
+  const connectedNetwork = getConnectedNetworkDisplay();
 
   const chainKey =
     typeof window !== "undefined"
@@ -89,22 +141,10 @@ const Dashboard = () => {
   const displaySent = alchemyNetwork ? alchemySent : totalSent;
   const displayReceived = alchemyNetwork ? alchemyReceived : totalReceived;
 
-  useEffect(() => {
-    if (!ownerAddress) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const balance = await fetchTokenBalance(ownerAddress);
-        if (!cancelled) setUsdcBalance(balance);
-      } catch (e) {
-        console.error("Error fetching token balance:", e);
-        if (!cancelled) setUsdcBalance(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [ownerAddress, chainKey]);
+  // Active chain balance (for header card)
+  const activeBalance = activeChainEntry
+    ? balanceMap[chainTabKey(activeChainEntry)]
+    : null;
 
   const toggleHideNumbers = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -221,13 +261,11 @@ const Dashboard = () => {
     if (data) {
       setTotalSent(Number(data.total_sent || 0))
       setTotalReceived(Number(data.total_received || 0))
-      setTotalBalance(Number(data.balance || 0))
     }
   }
 
   fetchTotals()
 }, [ownerAddress])
-console.log({usdcBalance,totalBalance})
   return <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
         {/* Stats Grid */}
@@ -243,7 +281,7 @@ console.log({usdcBalance,totalBalance})
                   <div>
                     <span className="text-muted-foreground text-sm font-medium">Total Balance</span>
                    <p className="text-2xl font-bold text-foreground">
-  {hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}
+  {hideNumbers ? "••••••" : activeBalance === "loading" ? "…" : `${(typeof activeBalance === "number" ? activeBalance : 0).toFixed(4)} ${activeChainEntry?.currency ?? connectedTokenLabel}`}
 </p>
                   </div>
                 </div>
@@ -291,7 +329,7 @@ console.log({usdcBalance,totalBalance})
                   {hideNumbers ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-2xl font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</p>
+              <p className="text-2xl font-bold text-foreground">{hideNumbers ? "••••••" : activeBalance === "loading" ? "…" : `${(typeof activeBalance === "number" ? activeBalance : 0).toFixed(4)} ${activeChainEntry?.currency ?? connectedTokenLabel}`}</p>
             </Card>
           </div>
 
@@ -328,73 +366,145 @@ console.log({usdcBalance,totalBalance})
           
         </div>
 
-        {/* Currency Balances */}
+        {/* ── Multi-Chain Balances ─────────────────────────────────────────── */}
         <Card id="currency-balances" className="p-4 md:p-6 rounded-2xl scroll-mt-24 md:scroll-mt-6">
-          <h2 className="text-lg font-semibold text-foreground mb-4 md:mb-6">Balances</h2>
-
-          {/* Desktop Table View */}
-          <div className="hidden sm:block">
-            <table className="w-full">
-              <thead>
-                <tr className="text-muted-foreground text-sm border-b border-border">
-                  <th className="text-left font-medium pb-3">Currency</th>
-                  <th className="text-right font-medium pb-3">Balance</th>
-                  <th className="text-right font-medium pb-3">Value</th>
-                  <th className="text-right font-medium pb-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-border/50">
-                  <td className="py-4">
-                    <div className="flex items-center gap-3">
-                      <img src={usdcLogo} alt={connectedTokenLabel} className="w-10 h-10" />
-                      <div>
-                        <p className="font-semibold text-foreground text-base">{connectedTokenLabel}</p>
-                        {/* <p className="text-sm text-muted-foreground">
-                          {connectedTokenLabel === "USDT" ? "Tether USD" : "USD Coin"}
-                        </p> */}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="text-right font-bold text-foreground text-base">
-                    {hideNumbers ? "••••••" : (usdcBalance ? usdcBalance : 0).toFixed(2)}
-                  </td>
-                  <td className="text-right font-bold text-foreground text-base">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</td>
-                  
-                </tr>
-                <tr className="border-b border-border/50">
-                  
-                  
-                  
-                  
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Card View */}
-          <div className="sm:hidden space-y-3">
-            {/* USDC Card */}
-            <div className="border border-border rounded-xl p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <img src={usdcLogo} alt={connectedTokenLabel} className="w-9 h-9" />
-                  <div>
-                    <p className="font-medium text-foreground">{connectedTokenLabel}</p>
-                    {/* <p className="text-xs text-muted-foreground">
-                      {connectedTokenLabel === "USDT" ? "Tether USD" : "USD Coin"}
-                    </p> */}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-foreground">{hideNumbers ? "••••••" : `$${(usdcBalance ? usdcBalance : 0).toFixed(2)}`}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {hideNumbers ? "••••••" : `${(usdcBalance ? usdcBalance : 0).toFixed(2)} ${connectedTokenLabel}`}
-                  </p>
-                </div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-foreground">Balances by Network</h2>
+            {activeChainEntry && (
+              <div className="flex items-center gap-2">
+                {activeChainEntry.logo && (
+                  <img src={activeChainEntry.logo} alt={activeChainEntry.blockchain}
+                    className="w-5 h-5 rounded-full object-contain"
+                    onError={(e: any) => { e.target.style.display = "none"; }}
+                  />
+                )}
+                <span className="text-sm font-medium text-foreground">{activeChainEntry.blockchain}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{
+                    background: activeChainEntry.network.toUpperCase().includes("MAIN") ? "#e6f4ea" : "#fff3e0",
+                    color: activeChainEntry.network.toUpperCase().includes("MAIN") ? "#2e7d32" : "#e65100",
+                  }}
+                >
+                  {activeChainEntry.network}
+                </span>
+                <span className="text-xs text-muted-foreground">active</span>
               </div>
-            </div>
+            )}
           </div>
+
+          {/* Mainnet / Testnet tab */}
+          <div className="flex gap-1 p-1 rounded-xl bg-muted mb-4">
+            {(["MAINNET", "TESTNET"] as const).map((tab) => (
+              <button key={tab} type="button"
+                onClick={() => setNetworkTab(tab)}
+                className={`flex-1 py-1.5 rounded-[8px] text-sm font-medium transition-all ${
+                  networkTab === tab
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab === "MAINNET" ? "Mainnet" : "Testnet"}
+              </button>
+            ))}
+          </div>
+
+          {chainsLoading ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
+              Loading chains…
+            </div>
+          ) : (networkTab === "MAINNET" ? mainnetChains : testnetChains).length === 0 ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
+              No {networkTab === "MAINNET" ? "mainnet" : "testnet"} chains available.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(networkTab === "MAINNET" ? mainnetChains : testnetChains).map((chain) => {
+                const key = chainTabKey(chain);
+                const bal = balanceMap[key];
+                const isActive =
+                  activeChainEntry?.chainId === chain.chainId &&
+                  activeChainEntry?.network === chain.network;
+
+                return (
+                  <div key={key}
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                      isActive
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:bg-muted/40"
+                    }`}
+                  >
+                    {/* Chain logo */}
+                    {chain.logo ? (
+                      <img src={chain.logo} alt={chain.blockchain}
+                        className="w-9 h-9 rounded-full object-contain flex-shrink-0"
+                        onError={(e: any) => { e.target.style.display = "none"; }}
+                      />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-[11px] font-bold text-primary">
+                        {chain.blockchain.slice(0, 2)}
+                      </div>
+                    )}
+
+                    {/* Chain info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground text-sm truncate">
+                          {chain.blockchain}
+                        </span>
+                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0"
+                          style={{
+                            background: isActive ? "#e0dbff" : "#f1f1f4",
+                            color: isActive ? "#4A3FC5" : "#666",
+                          }}
+                        >
+                          {chain.network}
+                        </span>
+                        {isActive && (
+                          <span className="text-[10px] font-semibold text-primary">● Active</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">Chain {chain.chainId} · {chain.currency}</span>
+                    </div>
+
+                    {/* Balance */}
+                    <div className="text-right flex-shrink-0">
+                      {bal === "loading" ? (
+                        <span className="text-sm text-muted-foreground animate-pulse">…</span>
+                      ) : typeof bal === "number" ? (
+                        <span className="font-bold text-foreground text-sm">
+                          {hideNumbers ? "••••" : `${bal.toFixed(4)} ${chain.currency}`}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </div>
+
+                    {/* Refresh + Switch */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button type="button"
+                        onClick={() => handleRefreshBalance(chain)}
+                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        title="Refresh balance"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button"
+                        onClick={() => handleSwitchActiveChain(chain)}
+                        disabled={isActive}
+                        className={`text-xs font-medium px-2.5 py-1 rounded-lg transition-all ${
+                          isActive
+                            ? "bg-primary text-primary-foreground cursor-default"
+                            : "border border-border hover:bg-primary hover:text-primary-foreground hover:border-primary"
+                        }`}
+                      >
+                        {isActive ? "Active" : "Switch"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
 
         {/* Statistics Chart */}

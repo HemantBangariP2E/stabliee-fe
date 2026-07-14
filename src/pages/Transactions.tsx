@@ -298,7 +298,7 @@ const insertTransaction = async ({
     from_address: ownerAddress,
     to_address: to,
     amount: amount,
-    token_symbol: selectedCurrency,
+    token_symbol: getTokenLabel(),
     direction,
     status,
     gas_fee: gasFee,

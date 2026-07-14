@@ -2,7 +2,8 @@ import { ethers } from "ethers";
 
 const SEPOLIA_RPC = (import.meta.env.VITE_ETH_SEPOLIA_RPC as string) || "https://ethereum-sepolia-rpc.publicnode.com";
 // const USDT_SEPOLIA_ADDRESS = "0x6df25D580C2354431C464f25aDee4e7a8c6c72c8";//usdt
-const USDT_SEPOLIA_ADDRESS = "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38";//usdc
+// const USDT_SEPOLIA_ADDRESS = "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38";//usdc
+const USDT_SEPOLIA_ADDRESS = "0x6df25D580C2354431C464f25aDee4e7a8c6c72c8";
 
 const ERC20_BALANCE_ABI = [
   "function balanceOf(address owner) view returns (uint256)",

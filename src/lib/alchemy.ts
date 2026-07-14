@@ -14,6 +14,8 @@ export interface NormalizedTransfer {
   blockNum?: string;
   /** ISO timestamp. Present when fetched with metadata. */
   blockTimestamp?: string;
+  /** Token contract this transfer belongs to */
+  tokenAddress?: string;
 }
 
 /** Totals from calculateTotals */
@@ -51,7 +53,8 @@ function getAlchemy(network: AlchemyNetwork): Alchemy {
 }
 
 function normalizeTransfer(
-  t: AssetTransfersResult & { metadata?: { blockTimestamp?: string } }
+  t: AssetTransfersResult & { metadata?: { blockTimestamp?: string } },
+  tokenAddress: string
 ): NormalizedTransfer {
   return {
     from: t.from,
@@ -60,6 +63,7 @@ function normalizeTransfer(
     hash: t.hash,
     blockNum: t.blockNum,
     blockTimestamp: t.metadata?.blockTimestamp,
+    tokenAddress,
   };
 }
 
@@ -84,7 +88,7 @@ async function fetchAllPages(
       withMetadata: true,
     });
 
-    const normalized = response.transfers.map(normalizeTransfer);
+    const normalized = response.transfers.map((t) => normalizeTransfer(t, tokenAddress));
     all.push(...normalized);
     pageKey = response.pageKey;
 
@@ -157,6 +161,50 @@ export async function getReceivedTransactions(
     return transfers;
   } catch (err) {
     console.error("[Alchemy] getReceivedTransactions error:", err);
+    throw err;
+  }
+}
+
+/**
+ * Fetch all ERC20 transfers (sent + received) for multiple token contracts.
+ * Deduplicates by transaction hash.
+ */
+export async function getAllTransactionsForTokens(
+  address: string,
+  tokenAddresses: string[],
+  network: AlchemyNetwork = "base-sepolia"
+): Promise<NormalizedTransfer[]> {
+  const unique = [
+    ...new Set(
+      tokenAddresses
+        .map((addr) => addr?.trim().toLowerCase())
+        .filter((addr): addr is string => Boolean(addr))
+    ),
+  ];
+
+  if (unique.length === 0) return [];
+  if (unique.length === 1) {
+    return getAllTransactions(address, unique[0], network);
+  }
+
+  try {
+    const results = await Promise.all(
+      unique.map((tokenAddress) => getAllTransactions(address, tokenAddress, network))
+    );
+
+    const byHash = new Map<string, NormalizedTransfer>();
+    for (const transfers of results) {
+      for (const tx of transfers) {
+        const key = tx.hash.toLowerCase();
+        if (!byHash.has(key)) {
+          byHash.set(key, tx);
+        }
+      }
+    }
+
+    return [...byHash.values()];
+  } catch (err) {
+    console.error("[Alchemy] getAllTransactionsForTokens error:", err);
     throw err;
   }
 }

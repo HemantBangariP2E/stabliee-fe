@@ -11,8 +11,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/hooks/supabaseClient";
-import { getAlchemyNetwork, getChainConfig, getTxExplorerUrl } from "@/lib/chains";
-import { getAllTransactions } from "@/lib/alchemy";
+import { getAlchemyNetwork, getChainConfig, getTokenLabelForAddress, getTrackedTokenAddresses, getTxExplorerUrl } from "@/lib/chains";
+import { getAllTransactionsForTokens } from "@/lib/alchemy";
 
 type Transaction = {
   id: number;
@@ -90,7 +90,7 @@ const TransactionHistory = () => {
       const chainConfig = getChainConfig();
       const tokenLabel = chainConfig.tokenLabel;
       const alchemyNetwork = getAlchemyNetwork();
-      const tokenAddress = chainConfig.tokenAddress;
+      const trackedTokenAddresses = getTrackedTokenAddresses();
 
       if (!ownerAddress) return;
 
@@ -103,7 +103,7 @@ const TransactionHistory = () => {
         .order("created_at", { ascending: false });
 
       const alchemyPromise = alchemyNetwork
-        ? getAllTransactions(ownerAddress, tokenAddress, alchemyNetwork)
+        ? getAllTransactionsForTokens(ownerAddress, trackedTokenAddresses, alchemyNetwork)
         : Promise.resolve([]);
 
       const [supabaseResult, alchemyTransfers] = await Promise.all([
@@ -197,6 +197,9 @@ const TransactionHistory = () => {
             ? parseInt(t.blockNum, 16) * 12_000
             : 0;
         sortTimeByHash.set(hashKey, sortTime);
+        const transferLabel = t.tokenAddress
+          ? getTokenLabelForAddress(t.tokenAddress)
+          : tokenLabel;
         const alchemyTx: Transaction = {
           id: nextId++,
           transactionId: t.hash,
@@ -207,7 +210,7 @@ const TransactionHistory = () => {
           type: isSent ? "Send" : "Receive",
           fromEmail: resolveDisplay(t.from),
           toEmail: resolveDisplay(t.to),
-          amount: `${t.amount.toFixed(8)} ${tokenLabel}`,
+          amount: `${t.amount.toFixed(8)} ${transferLabel}`,
           address: otherAddr,
           status: "Success",
           gasFee: "N/A",
@@ -259,9 +262,13 @@ const TransactionHistory = () => {
   };
 
   const formatAmountForList = (amount: string) => {
-    const parts = amount.split(" ");
+    const parts = amount.trim().split(/\s+/);
     const value = parseFloat(parts[0]);
-    return Number.isFinite(value) ? value.toFixed(6) : "0.000000";
+    const symbol = parts.slice(1).join(" ") || "USDC";
+    return {
+      value: Number.isFinite(value) ? value.toFixed(6) : "0.000000",
+      symbol,
+    };
   };
 
   const parseTxDate = (dateStr: string): Date | null => {
@@ -500,7 +507,12 @@ const TransactionHistory = () => {
                             <span className="text-muted-foreground">N/A</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-sm align-middle">{formatAmountForList(tx.amount)} USDC</td>
+                        <td className="py-3 px-4 text-sm align-middle">
+                          {(() => {
+                            const { value, symbol } = formatAmountForList(tx.amount);
+                            return `${value} ${symbol}`;
+                          })()}
+                        </td>
                         <td className="py-3 px-4 text-sm align-middle" onClick={(e) => e.stopPropagation()}>
                           {tx.transactionId ? (
                             <div className="flex items-center gap-1.5 font-mono">
@@ -628,9 +640,11 @@ const TransactionHistory = () => {
                           )}
                         >
                           {tx.type === "Receive" ? "+" : tx.type === "Send" ? "-" : ""}
-                          {formatAmountForList(tx.amount)}
+                          {formatAmountForList(tx.amount).value}
                         </p>
-                        <p className="text-xs text-muted-foreground">USDC</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatAmountForList(tx.amount).symbol}
+                        </p>
                       </div>
                     </div>
                   </div>

@@ -5,6 +5,7 @@ export const CHAIN_IDS = {
   ETH_SEPOLIA: "11155111",
   BASE_MAINNET: "8453",
   BASE_SEPOLIA: "84532",
+  POLYGON_MAINNET: "137",
   POLYGON_AMOY: "80002",
   SCROLL_SEPOLIA: "534351",
   SCROLL_MAINNET: "534352",
@@ -30,10 +31,106 @@ export const CHAIN_IDS = {
   AVALANCHE_FUJI: "43113",
   BSC_MAINNET: "56",
   BSC_TESTNET: "97",
+  // KALP
+  KALP_MAINNET: "19031997",
+  KALP_NEWTESTNET: "19031998",
+  // TRON
+  TRON_MAINNET: "728126428",
+  TRON_NILE: "201910292",   // Nile testnet (same chainId as Shasta in API)
+  TRON_SHASTA: "201910291", // disambiguated locally
+  // ADI
+  ADI_TESTNET: "99999",
 } as const;
 
+/** Canonical chain descriptor — shape matches the API's chainsAndNetworks entries. */
+export type SupportedChain = {
+  chainId: string;
+  blockchain: string;
+  network: string;
+  displayName: string;
+  currency: string;
+  explorerUrl: string;
+  logo: string;
+  isMainnet: boolean;
+};
+
+const KALP_LOGO = "https://qa-ks-root-be.s3.ap-south-1.amazonaws.com/302e33333735373434333032353630323537341755508661269.svg";
+const TRON_LOGO = "https://qa-ks-root-be.s3.ap-south-1.amazonaws.com/302e3838333636313539363130323534341755068926648.svg";
+const ETH_LOGO   = "https://qa-ks-root-be.s3.ap-south-1.amazonaws.com/blockChainCurrencySymbol/ethereum.svg";
+const BASE_LOGO  = "https://qa-ks-root-be.s3.ap-south-1.amazonaws.com/blockChainCurrencySymbol/base.svg";
+const BSC_LOGO   = "https://qa-ks-root-be.s3.ap-south-1.amazonaws.com/blockChainCurrencySymbol/binance.svg";
+const POLY_LOGO  = "https://qa-ks-root-be.s3.ap-south-1.amazonaws.com/blockChainCurrencySymbol/polygon.svg";
+const ADI_LOGO   = "https://qa-ks-root-be.s3.ap-south-1.amazonaws.com/blockChainCurrencySymbol/adi.png";
+
+/** All chains supported by the platform — split into mainnet / testnet. */
+export const SUPPORTED_CHAINS: SupportedChain[] = [
+  // ── MAINNET ────────────────────────────────────────────────────────────────
+  { chainId: "8453",      blockchain: "BASE", network: "MAINNET",    displayName: "Base",             currency: "ETH",  explorerUrl: "https://basescan.org",           logo: BASE_LOGO,  isMainnet: true  },
+  { chainId: "56",        blockchain: "BSC",  network: "MAINNET",    displayName: "BNB Chain",        currency: "BNB",  explorerUrl: "https://bscscan.com",            logo: BSC_LOGO,   isMainnet: true  },
+  { chainId: "1",         blockchain: "ETH",  network: "MAINNET",    displayName: "Ethereum",         currency: "ETH",  explorerUrl: "https://etherscan.io",           logo: ETH_LOGO,   isMainnet: true  },
+  { chainId: "19031997",  blockchain: "KALP", network: "MAINNET",    displayName: "KALP",             currency: "GINI", explorerUrl: "https://explorer.kalp.network",  logo: KALP_LOGO,  isMainnet: true  },
+  { chainId: "137",       blockchain: "POLY", network: "MAINNET",    displayName: "Polygon",          currency: "POL",  explorerUrl: "https://polygonscan.com",        logo: POLY_LOGO,  isMainnet: true  },
+  { chainId: "728126428", blockchain: "TRON", network: "MAINNET",    displayName: "TRON",             currency: "TRX",  explorerUrl: "https://tronscan.org",           logo: TRON_LOGO,  isMainnet: true  },
+  // ── TESTNET ────────────────────────────────────────────────────────────────
+  { chainId: "99999",     blockchain: "ADI",  network: "TESTNET",    displayName: "ADI Testnet",      currency: "ADI",  explorerUrl: "https://explorer.ab.testnet.adifoundation.ai", logo: ADI_LOGO,  isMainnet: false },
+  { chainId: "84532",     blockchain: "BASE", network: "SEPOLIA",    displayName: "Base Sepolia",     currency: "ETH",  explorerUrl: "https://sepolia.basescan.org",   logo: BASE_LOGO,  isMainnet: false },
+  { chainId: "97",        blockchain: "BSC",  network: "TESTNET",    displayName: "BNB Testnet",      currency: "BNB",  explorerUrl: "https://testnet.bscscan.com",    logo: BSC_LOGO,   isMainnet: false },
+  { chainId: "11155111",  blockchain: "ETH",  network: "SEPOLIA",    displayName: "Ethereum Sepolia", currency: "ETH",  explorerUrl: "https://sepolia.etherscan.io",   logo: ETH_LOGO,   isMainnet: false },
+  { chainId: "19031998",  blockchain: "KALP", network: "NEWTESTNET", displayName: "KALP Testnet",     currency: "GINI", explorerUrl: "https://kalpscan.io/home",        logo: KALP_LOGO,  isMainnet: false },
+  { chainId: "80002",     blockchain: "POLY", network: "AMOY",       displayName: "Polygon Amoy",     currency: "POL",  explorerUrl: "https://amoy.polygonscan.com",   logo: POLY_LOGO,  isMainnet: false },
+  { chainId: "201910292", blockchain: "TRON", network: "NILE",       displayName: "TRON Nile",        currency: "TRX",  explorerUrl: "https://nile.tronscan.org",       logo: TRON_LOGO,  isMainnet: false },
+  { chainId: "201910292", blockchain: "TRON", network: "SHASTA",     displayName: "TRON Shasta",      currency: "TRX",  explorerUrl: "https://shasta.tronscan.org",     logo: TRON_LOGO,  isMainnet: false },
+];
+
+export const MAINNET_CHAINS = SUPPORTED_CHAINS.filter((c) => c.isMainnet);
+export const TESTNET_CHAINS = SUPPORTED_CHAINS.filter((c) => !c.isMainnet);
+
+/** Write a chain selection to localStorage and notify all listeners. */
+export function setActiveChain(chain: SupportedChain): void {
+  localStorage.setItem("chainIdConfig", chain.chainId);
+  localStorage.setItem("blockchainName", chain.blockchain);
+  localStorage.setItem("networkName", chain.network);
+  // Clear nativeToken so getChainConfig resolves from CHAIN_REGISTRY
+  localStorage.removeItem("nativeToken");
+  window.dispatchEvent(new Event("chainChanged"));
+}
+
+/** Read the currently active chain from localStorage. */
+export function getActiveChain(): SupportedChain | null {
+  const chainId = localStorage.getItem("chainIdConfig") || "";
+  const blockchain = (localStorage.getItem("blockchainName") || "").toUpperCase();
+  const network = (localStorage.getItem("networkName") || "").toUpperCase();
+
+  if (!chainId && !blockchain) return null;
+
+  return (
+    SUPPORTED_CHAINS.find(
+      (c) =>
+        c.chainId === chainId ||
+        (c.blockchain === blockchain && c.network === network)
+    ) ?? null
+  );
+}
+
+/** Saved multi-chain selection (stored as JSON in localStorage). */
+const ENABLED_CHAINS_KEY = "enabledChainIds";
+
+export function getEnabledChains(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(ENABLED_CHAINS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function setEnabledChains(chainIds: string[]): void {
+  localStorage.setItem(ENABLED_CHAINS_KEY, JSON.stringify(chainIds));
+  window.dispatchEvent(new Event("chainChanged"));
+}
+
 // export const ETH_USDT_TOKEN = "0x6df25D580C2354431C464f25aDee4e7a8c6c72c8";//usdt
-export const ETH_USDT_TOKEN = "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38";//usdc 
+// export const ETH_USDT_TOKEN = "0x5aEC77A2CBE8ee9D359F965826BdDFa026DfFb38";//usdc 
+export const ETH_USDT_TOKEN = "0x6df25D580C2354431C464f25aDee4e7a8c6c72c8";//usdt
 
 
 export const BASE_USDC_TOKEN = "0x1ad8c3B424fC925D75CCFE8dA049A4c245bFa913";
@@ -106,6 +203,15 @@ export const CHAIN_REGISTRY: Record<string, ChainEntry> = {
     isBase: true,
     isPolygon: false,
   },
+  [CHAIN_IDS.POLYGON_MAINNET]: {
+    chainId: CHAIN_IDS.POLYGON_MAINNET,
+    tokenAddress: POLYGON_AMOY_TOKEN,
+    currency: "USDC",
+    tokenLabel: "USDC",
+    displayName: "Polygon",
+    isBase: false,
+    isPolygon: true,
+  },
   [CHAIN_IDS.POLYGON_AMOY]: {
     chainId: CHAIN_IDS.POLYGON_AMOY,
     tokenAddress: POLYGON_AMOY_TOKEN,
@@ -115,6 +221,11 @@ export const CHAIN_REGISTRY: Record<string, ChainEntry> = {
     isBase: false,
     isPolygon: true,
   },
+  [CHAIN_IDS.KALP_MAINNET]: usdcAlpha({ chainId: CHAIN_IDS.KALP_MAINNET, displayName: "KALP" }),
+  [CHAIN_IDS.KALP_NEWTESTNET]: usdcAlpha({ chainId: CHAIN_IDS.KALP_NEWTESTNET, displayName: "KALP Testnet" }),
+  [CHAIN_IDS.TRON_MAINNET]: usdcAlpha({ chainId: CHAIN_IDS.TRON_MAINNET, displayName: "TRON" }),
+  [CHAIN_IDS.TRON_NILE]: usdcAlpha({ chainId: CHAIN_IDS.TRON_NILE, displayName: "TRON Nile" }),
+  [CHAIN_IDS.ADI_TESTNET]: usdcAlpha({ chainId: CHAIN_IDS.ADI_TESTNET, displayName: "ADI Testnet" }),
   [CHAIN_IDS.SCROLL_SEPOLIA]: usdcAlpha({ chainId: CHAIN_IDS.SCROLL_SEPOLIA, displayName: "Scroll Sepolia" }),
   [CHAIN_IDS.SCROLL_MAINNET]: usdcAlpha({ chainId: CHAIN_IDS.SCROLL_MAINNET, displayName: "Scroll" }),
   [CHAIN_IDS.ZKSYNC_SEPOLIA]: usdcAlpha({ chainId: CHAIN_IDS.ZKSYNC_SEPOLIA, displayName: "zkSync Sepolia" }),
@@ -380,6 +491,40 @@ export function resolveTokenAddress(chainId?: string, blockchainName?: string): 
     }
   }
   return config.tokenAddress;
+}
+
+/** ERC20 contracts to include in activity/history (registry + widget native token). */
+export function getTrackedTokenAddresses(chainId?: string, blockchainName?: string): string[] {
+  const config = getChainConfig(chainId, blockchainName);
+  const resolved = resolveTokenAddress(chainId, blockchainName);
+  const seen = new Set<string>();
+  const addresses: string[] = [];
+
+  for (const addr of [config.tokenAddress, resolved]) {
+    const normalized = addr?.trim().toLowerCase();
+    if (!normalized || !ETH_ADDRESS_RE.test(addr.trim()) || seen.has(normalized)) continue;
+    seen.add(normalized);
+    addresses.push(addr.trim());
+  }
+
+  return addresses;
+}
+
+/** Display label for a tracked token contract address. */
+export function getTokenLabelForAddress(
+  tokenAddress: string,
+  chainId?: string,
+  blockchainName?: string
+): string {
+  const config = getChainConfig(chainId, blockchainName);
+  const resolved = resolveTokenAddress(chainId, blockchainName);
+  if (tokenAddress.trim().toLowerCase() === resolved.trim().toLowerCase()) {
+    return config.tokenLabel;
+  }
+  if (tokenAddress.trim().toLowerCase() === config.tokenAddress.trim().toLowerCase()) {
+    return config.tokenLabel;
+  }
+  return config.tokenLabel;
 }
 
 export function getTokenLabel(chainId?: string, blockchainName?: string): string {
